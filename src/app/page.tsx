@@ -576,16 +576,27 @@ export default function RockolaSaaS() {
     // Mostrar error si hay problemas de conexión
     if (error) {
       return (
-        <div className="fixed inset-0 bg-black flex items-center justify-center">
-          <div className="text-center p-8">
+        <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
+          <div className="text-center max-w-lg w-full">
             <WifiOff className="w-20 h-20 text-red-500 mx-auto mb-4" />
             <h1 className="text-3xl font-bold text-white mb-4">Error de Conexión</h1>
-            <p className="text-gray-400 mb-4 max-w-md">{error}</p>
+            <p className="text-gray-400 mb-4">{error}</p>
+            
+            {/* Diagnóstico en pantalla */}
+            <div className="bg-gray-900 rounded-lg p-4 mb-4 text-left text-sm overflow-auto max-h-60">
+              <p className="text-yellow-400 font-bold mb-2">📊 Diagnóstico:</p>
+              <p className="text-gray-300">Supabase URL: {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+              <p className="text-gray-300">Supabase Key: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+              <p className="text-gray-300">YouTube Key: {process.env.NEXT_PUBLIC_YOUTUBE_API_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+              <p className="text-gray-300">Bar ID: {DEFAULT_BAR_ID}</p>
+              <p className="text-gray-300">Cliente Supabase: {supabase ? '✅ Inicializado' : '❌ NULL'}</p>
+            </div>
+            
             <button 
-              onClick={() => cargarDatos()} 
+              onClick={() => window.location.reload()} 
               className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl"
             >
-              Reintentar
+              Recargar Página
             </button>
           </div>
         </div>
@@ -629,7 +640,18 @@ export default function RockolaSaaS() {
             <div className="text-center">
               <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
               <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
-              <p className="text-gray-400 text-xl mb-8">{bar?.nombre || (cargando ? 'Conectando...' : 'Esperando conexión...')}</p>
+              <p className="text-gray-400 text-xl mb-4">{bar?.nombre || (cargando ? 'Conectando...' : 'Esperando conexión...')}</p>
+              
+              {/* Mostrar diagnóstico si no hay bar y está cargando */}
+              {cargando && !bar && (
+                <div className="bg-gray-900 rounded-lg p-4 mb-4 text-left text-sm max-w-md mx-auto">
+                  <p className="text-yellow-400 font-bold mb-2">📊 Verificando conexión...</p>
+                  <p className="text-gray-300">Supabase URL: {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅' : '❌'}</p>
+                  <p className="text-gray-300">Supabase Key: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅' : '❌'}</p>
+                  <p className="text-gray-300">Cliente: {supabase ? '✅' : '❌'}</p>
+                </div>
+              )}
+              
               <p className="text-gray-500 text-lg mb-12">Esperando canciones...</p>
               
               {currentUrl && (
