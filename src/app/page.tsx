@@ -48,6 +48,7 @@ export default function RockolaSaaS() {
   const [cargando, setCargando] = useState(true)
   const [conectado, setConectado] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [diagnostico, setDiagnostico] = useState<any>(null)
 
   // ============= ESTADOS DE AUTENTICACIÓN =============
   const [claveInput, setClaveInput] = useState('')
@@ -97,6 +98,15 @@ export default function RockolaSaaS() {
     else setModo('tv')
 
     setCurrentUrl(window.location.origin)
+    
+    // Cargar diagnóstico de variables de entorno
+    fetch('/api/diagnostico')
+      .then(res => res.json())
+      .then(data => {
+        console.log('📊 Diagnóstico:', data)
+        setDiagnostico(data)
+      })
+      .catch(err => console.error('Error cargando diagnóstico:', err))
   }, [])
 
   // ============= CARGAR DATOS SEGÚN MODO =============
@@ -444,19 +454,41 @@ export default function RockolaSaaS() {
   if (error && modo !== 'tv') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl text-center">
+        <div className="bg-white rounded-2xl p-8 max-w-xl w-full shadow-2xl text-center">
           <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Error de Conexión</h2>
           <p className="text-gray-600 mb-4 font-mono text-sm bg-gray-100 p-3 rounded-lg">{error}</p>
-          <div className="text-left text-sm text-gray-500 mb-4 p-3 bg-gray-50 rounded-lg">
+          
+          {/* Información de diagnóstico */}
+          <div className="text-left text-sm text-gray-500 mb-4 p-3 bg-gray-50 rounded-lg overflow-auto max-h-60">
             <p><strong>Modo:</strong> {modo}</p>
             <p><strong>Bar ID:</strong> {DEFAULT_BAR_ID}</p>
-            <p><strong>Supabase URL:</strong> {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
-            <p><strong>Supabase Key:</strong> {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+            <hr className="my-2" />
+            {diagnostico ? (
+              <>
+                <p className="font-bold text-gray-700 mb-1">Variables de Entorno:</p>
+                <p><strong>SUPABASE_URL:</strong> {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_URL?.configured ? 
+                  `✅ ${diagnostico.variables.NEXT_PUBLIC_SUPABASE_URL.value}` : '❌ NO CONFIGURADA'}</p>
+                <p><strong>SUPABASE_KEY:</strong> {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_ANON_KEY?.configured ? 
+                  `✅ ${diagnostico.variables.NEXT_PUBLIC_SUPABASE_ANON_KEY.prefix}` : '❌ NO CONFIGURADA'}</p>
+                {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_ANON_KEY?.configured && (
+                  <p><strong>Formato válido:</strong> {diagnostico.variables.NEXT_PUBLIC_SUPABASE_ANON_KEY.isValidFormat ? '✅ Sí (eyJ...)' : '❌ NO (debe empezar con eyJ)'}</p>
+                )}
+                <p><strong>YOUTUBE_KEY:</strong> {diagnostico.variables?.NEXT_PUBLIC_YOUTUBE_API_KEY?.configured ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+              </>
+            ) : (
+              <p className="text-yellow-600">Cargando diagnóstico...</p>
+            )}
           </div>
-          <button onClick={() => cargarDatos()} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl">
-            Reintentar
-          </button>
+          
+          <div className="flex gap-2">
+            <button onClick={() => window.location.reload()} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl">
+              Recargar Página
+            </button>
+            <button onClick={() => cargarDatos()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl">
+              Reintentar
+            </button>
+          </div>
         </div>
       </div>
     )
