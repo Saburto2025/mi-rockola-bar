@@ -3,10 +3,29 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
+// Debug: Log para verificar que las variables están disponibles
+console.log('🔧 Supabase Config:', {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseAnonKey,
+  urlPrefix: supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING'
+})
+
 // Solo crear cliente si hay credenciales
 export const supabase = supabaseUrl && supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null as any
+
+// Exportar función para verificar conexión
+export const verificarConexion = async () => {
+  if (!supabase) {
+    throw new Error('Cliente Supabase no inicializado. Verifica las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+  const { data, error } = await supabase.from('bares').select('count').limit(1)
+  if (error) {
+    throw new Error(`Error de conexión Supabase: ${error.message}`)
+  }
+  return true
+}
 
 // Tipos
 export interface Bar {
@@ -68,13 +87,24 @@ export interface Cliente {
 
 // Obtener datos del bar
 export async function obtenerBar(barId: string) {
+  console.log('📊 obtenerBar llamado con ID:', barId)
+  
+  if (!supabase) {
+    throw new Error('Cliente Supabase no inicializado')
+  }
+  
   const { data, error } = await supabase
     .from('bares')
     .select('*')
     .eq('id', barId)
     .single()
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error en obtenerBar:', error)
+    throw error
+  }
+  
+  console.log('✅ Bar obtenido:', data?.nombre)
   return data as Bar
 }
 
@@ -92,6 +122,12 @@ export async function obtenerInstancia(barId: string) {
 
 // Obtener cola de canciones
 export async function obtenerCola(barId: string) {
+  console.log('📊 obtenerCola llamado con barId:', barId)
+  
+  if (!supabase) {
+    throw new Error('Cliente Supabase no inicializado')
+  }
+  
   const { data, error } = await supabase
     .from('canciones_cola')
     .select('*')
@@ -100,7 +136,12 @@ export async function obtenerCola(barId: string) {
     .order('posicion', { ascending: true })
     .order('creado_en', { ascending: true })
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error en obtenerCola:', error)
+    throw error
+  }
+  
+  console.log('✅ Cola obtenida:', data?.length, 'canciones')
   return data as CancionCola[]
 }
 
@@ -265,12 +306,23 @@ export async function actualizarPrecios(barId: string, precioCompra: number, pre
 
 // Obtener todos los bares (Super Admin)
 export async function obtenerTodosLosBares() {
+  console.log('📊 obtenerTodosLosBares llamado')
+  
+  if (!supabase) {
+    throw new Error('Cliente Supabase no inicializado')
+  }
+  
   const { data, error } = await supabase
     .from('bares')
     .select('*')
     .order('creado_en', { ascending: false })
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error en obtenerTodosLosBares:', error)
+    throw error
+  }
+  
+  console.log('✅ Bares obtenidos:', data?.length)
   return data as Bar[]
 }
 
@@ -294,12 +346,23 @@ export async function crearBar(nombre: string) {
 
 // Obtener todas las transacciones (Super Admin)
 export async function obtenerTodasTransacciones() {
+  console.log('📊 obtenerTodasTransacciones llamado')
+  
+  if (!supabase) {
+    throw new Error('Cliente Supabase no inicializado')
+  }
+  
   const { data, error } = await supabase
     .from('transacciones')
     .select('*')
     .order('creado_en', { ascending: false })
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error en obtenerTodasTransacciones:', error)
+    throw error
+  }
+  
+  console.log('✅ Transacciones obtenidas:', data?.length)
   return data as Transaccion[]
 }
 

@@ -9,7 +9,7 @@ import {
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
   Plus, Minus, LogOut, Copy, Calendar, TrendingUp
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, verificarConexion, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
@@ -100,55 +100,77 @@ export default function RockolaSaaS() {
   }, [])
 
   // ============= CARGAR DATOS SEGÚN MODO =============
-  const cargarDatos = async (barIdToUse?: string) => {
+  const cargarDatos = useCallback(async (barIdToUse?: string) => {
+    console.log('🔄 cargarDatos iniciado. Modo:', modo, 'barIdToUse:', barIdToUse)
+    
     try {
       setCargando(true)
       setError(null)
 
+      // Verificar conexión a Supabase
+      if (!supabase) {
+        throw new Error('Cliente Supabase no inicializado. Verifica las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      }
+
       if (modo === 'superadmin') {
+        console.log('📊 Cargando datos de Super Admin...')
         const baresData = await obtenerTodosLosBares()
         setBares(baresData)
         const transData = await obtenerTodasTransacciones()
         setTodasTransacciones(transData)
         setConectado(true)
+        console.log('✅ Super Admin datos cargados')
         return
       }
 
-      const id = barIdToUse || barId
-      if (!id) {
-        setCargando(false)
-        return
-      }
-
+      const id = barIdToUse || DEFAULT_BAR_ID
+      console.log('📊 Cargando datos del bar:', id)
+      
+      // Cargar datos del bar
       const barData = await obtenerBar(id)
+      console.log('✅ Bar cargado:', barData?.nombre)
       setBar(barData)
 
+      // Cargar cola
       const colaData = await obtenerCola(id)
+      console.log('✅ Cola cargada:', colaData.length, 'canciones')
       setCola(colaData)
 
       const actual = colaData.find(c => c.estado === 'reproduciendo')
       setCancionActual(actual || null)
 
+      // Cargar transacciones
       const transData = await obtenerTransacciones(id)
       setTransacciones(transData)
 
       setConectado(true)
+      console.log('✅ Datos cargados exitosamente')
     } catch (err: any) {
-      console.error('Error cargando datos:', err)
+      console.error('❌ Error cargando datos:', err)
       setError(err.message || 'Error al conectar con la base de datos')
       setConectado(false)
     } finally {
       setCargando(false)
     }
-  }
+  }, [modo])
 
   // ============= SUSCRIPCIÓN A CAMBIOS =============
   useEffect(() => {
-    if (modo === 'superadmin') return
+    console.log('🔄 useEffect suscripción - modo:', modo)
     
-    cargarDatos()
+    if (modo === 'superadmin') {
+      // Para superadmin, cargar datos directamente sin suscripción en tiempo real
+      cargarDatos()
+      return
+    }
+    
+    // Cargar datos iniciales
+    cargarDatos(DEFAULT_BAR_ID)
 
-    unsubscribeRef.current = suscribirseACambios(barId, {
+    // Suscribirse a cambios en tiempo real
+    const id = DEFAULT_BAR_ID
+    
+    unsubscribeRef.current = suscribirseACambios(id, {
       onBarCambio: (nuevoBar) => {
         setBar(nuevoBar)
         if (barSeleccionado?.id === nuevoBar.id) {
@@ -161,7 +183,7 @@ export default function RockolaSaaS() {
         setCancionActual(actual || null)
       },
       onTransaccionCambio: () => {
-        if (barId) obtenerTransacciones(barId).then(setTransacciones)
+        obtenerTransacciones(id).then(setTransacciones)
       }
     })
 
@@ -170,7 +192,7 @@ export default function RockolaSaaS() {
         unsubscribeRef.current()
       }
     }
-  }, [modo, barId])
+  }, [modo, cargarDatos])
 
   // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
   const buscarVideos = async () => {
@@ -422,10 +444,16 @@ export default function RockolaSaaS() {
   if (error && modo !== 'tv') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+        <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl text-center">
           <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Error de Conexión</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4 font-mono text-sm bg-gray-100 p-3 rounded-lg">{error}</p>
+          <div className="text-left text-sm text-gray-500 mb-4 p-3 bg-gray-50 rounded-lg">
+            <p><strong>Modo:</strong> {modo}</p>
+            <p><strong>Bar ID:</strong> {DEFAULT_BAR_ID}</p>
+            <p><strong>Supabase URL:</strong> {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+            <p><strong>Supabase Key:</strong> {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
+          </div>
           <button onClick={() => cargarDatos()} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl">
             Reintentar
           </button>
@@ -513,6 +541,25 @@ export default function RockolaSaaS() {
   // MODO TV - PANTALLA LIMPIA SOLO VIDEO
   // ================================================================
   if (modo === 'tv') {
+    // Mostrar error si hay problemas de conexión
+    if (error) {
+      return (
+        <div className="fixed inset-0 bg-black flex items-center justify-center">
+          <div className="text-center p-8">
+            <WifiOff className="w-20 h-20 text-red-500 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-white mb-4">Error de Conexión</h1>
+            <p className="text-gray-400 mb-4 max-w-md">{error}</p>
+            <button 
+              onClick={() => cargarDatos()} 
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl"
+            >
+              Reintentar
+            </button>
+          </div>
+        </div>
+      )
+    }
+    
     return (
       <div className="fixed inset-0 bg-black overflow-hidden">
         {cancionActual ? (
@@ -550,7 +597,7 @@ export default function RockolaSaaS() {
             <div className="text-center">
               <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
               <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
-              <p className="text-gray-400 text-xl mb-8">{bar?.nombre || 'Esperando conexión...'}</p>
+              <p className="text-gray-400 text-xl mb-8">{bar?.nombre || (cargando ? 'Conectando...' : 'Esperando conexión...')}</p>
               <p className="text-gray-500 text-lg mb-12">Esperando canciones...</p>
               
               {currentUrl && (
