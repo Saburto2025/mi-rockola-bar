@@ -20,8 +20,8 @@ const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
 const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
 
 // Precios fijos
-const PRECIO_COMPRA = 40  // Colones - lo que paga el bar al dueño del SaaS
-const PRECIO_VENTA = 60   // Colones - lo que cobra el bar al cliente
+const PRECIO_COMPRA = 40   // Colones - lo que paga el bar al dueño del SaaS
+const PRECIO_VENTA = 100   // Colones - lo que cobra el bar al cliente
 
 interface VideoBusqueda {
   id: { videoId: string }
