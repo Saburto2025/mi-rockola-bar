@@ -743,11 +743,11 @@ export default function RockolaSaaS() {
   if (modo === 'superadmin') {
     if (!isAuthed) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 to-black flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-teal-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
-            <Crown className="w-16 h-16 text-purple-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-center mb-4">🔐 MERKA 4.0</h2>
-            <p className="text-center text-gray-500 mb-4">Super Admin</p>
+            <Crown className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-center mb-2">🎵 MERKA 4.0</h2>
+            <p className="text-center text-green-600 font-bold mb-4">SUPER ADMIN</p>
             <input
               type="password"
               value={claveInput}
@@ -759,14 +759,14 @@ export default function RockolaSaaS() {
                 }
               }}
               placeholder="Clave de acceso"
-              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none"
+              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none"
             />
             <button
               onClick={() => {
                 if (claveInput === CLAVE_SUPER_ADMIN) setIsAuthed(true)
                 else alert('❌ Clave incorrecta')
               }}
-              className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl text-xl"
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl text-xl"
             >
               ENTRAR
             </button>
