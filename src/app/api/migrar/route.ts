@@ -80,10 +80,14 @@ export async function GET() {
     }
 
     // Obtener bares para mostrar
-    const { data: bares } = await supabase
+    const { data: bares, error: baresError } = await supabase
       .from('bares')
       .select('id, nombre, creditos_disponibles, creditos_pantalla')
       .limit(5)
+
+    if (baresError) {
+      resultados.push(`⚠️ Error obteniendo bares: ${baresError.message}`)
+    }
 
     return NextResponse.json({ 
       success: true, 
