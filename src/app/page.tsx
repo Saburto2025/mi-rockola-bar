@@ -544,6 +544,7 @@ export default function RockolaSaaS() {
               }}
               placeholder="Clave de acceso"
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-yellow-500 focus:outline-none"
+              autoFocus
             />
             <button
               onClick={() => {
@@ -551,7 +552,7 @@ export default function RockolaSaaS() {
                 else if (claveInput === CLAVE_SUPER_ADMIN) { setIsAuthed(true); setModo('superadmin') }
                 else alert('❌ Clave incorrecta')
               }}
-              className="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl text-xl"
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 rounded-xl text-xl transition-colors"
             >
               ENTRAR
             </button>
@@ -560,27 +561,84 @@ export default function RockolaSaaS() {
       )
     }
 
+    // Funciones del Admin
+    const handleAprobar = async (cancionId: string) => {
+      try {
+        await actualizarEstadoCancion(cancionId, 'aprobada')
+        await cargarDatos()
+      } catch (error) {
+        alert('Error al aprobar')
+      }
+    }
+
+    const handleRechazar = async (cancionId: string) => {
+      try {
+        await eliminarCancion(cancionId)
+        await cargarDatos()
+      } catch (error) {
+        alert('Error al rechazar')
+      }
+    }
+
+    const handleEliminarCola = async (cancionId: string) => {
+      try {
+        await eliminarCancion(cancionId)
+        await cargarDatos()
+      } catch (error) {
+        alert('Error al eliminar')
+      }
+    }
+
+    const handleTogglePause = () => {
+      if (player) {
+        if (pausado) player.playVideo()
+        else player.pauseVideo()
+        setPausado(!pausado)
+      }
+    }
+
+    const handleSkip = async () => {
+      if (cancionActual) {
+        await eliminarCancion(cancionActual.id)
+        setCancionActual(null)
+        setTimeout(() => reproducirSiguiente(), 500)
+      }
+    }
+
+    const handleVolumen = (nuevoVolumen: number) => {
+      if (player) player.setVolume(nuevoVolumen)
+      setVolumen(nuevoVolumen)
+    }
+
     return (
       <div className="min-h-screen bg-gray-100">
         {/* Modal vender créditos */}
         {modalClienteAbierto && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
-              <h3 className="text-xl font-bold mb-4">💰 Vender {creditosAVender} créditos</h3>
-              <p className="text-gray-600 mb-2">Total: ₡{creditosAVender * PRECIO_VENTA}</p>
+              <h3 className="text-xl font-bold mb-2">💰 Vender {creditosAVender} créditos</h3>
+              <p className="text-gray-600 mb-4">Total a cobrar: <span className="font-bold text-green-600">₡{creditosAVender * PRECIO_VENTA}</span></p>
               <input
                 type="text"
                 value={nombreClienteInput}
                 onChange={(e) => setNombreClienteInput(e.target.value)}
                 placeholder="Nombre del cliente"
-                className="w-full p-3 border-2 border-gray-200 rounded-xl mb-4 text-lg"
+                className="w-full p-3 border-2 border-gray-200 rounded-xl mb-4 text-lg focus:border-green-500 focus:outline-none"
                 autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && confirmarVentaCliente()}
               />
               <div className="flex gap-2">
-                <button onClick={() => setModalClienteAbierto(false)} className="flex-1 bg-gray-200 py-3 rounded-xl font-bold">
+                <button 
+                  onClick={() => { setModalClienteAbierto(false); setNombreClienteInput('') }} 
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 py-3 rounded-xl font-bold transition-colors"
+                >
                   Cancelar
                 </button>
-                <button onClick={confirmarVentaCliente} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-bold">
+                <button 
+                  onClick={confirmarVentaCliente} 
+                  disabled={!nombreClienteInput.trim()}
+                  className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white py-3 rounded-xl font-bold transition-colors"
+                >
                   Confirmar
                 </button>
               </div>
@@ -589,13 +647,16 @@ export default function RockolaSaaS() {
         )}
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white">
+        <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white sticky top-0 z-10">
           <div className="max-w-2xl mx-auto flex justify-between items-center">
             <div>
-              <h1 className="text-xl font-bold">👑 {bar?.nombre}</h1>
+              <h1 className="text-xl font-bold">👑 {bar?.nombre || 'Admin Bar'}</h1>
               <p className="text-sm opacity-80">Panel de Administración</p>
             </div>
-            <button onClick={() => setIsAuthed(false)} className="bg-black/20 px-4 py-2 rounded-lg">
+            <button 
+              onClick={() => { setIsAuthed(false); setClaveInput('') }} 
+              className="bg-black/20 hover:bg-black/30 px-4 py-2 rounded-lg transition-colors"
+            >
               Salir
             </button>
           </div>
@@ -607,48 +668,97 @@ export default function RockolaSaaS() {
             <h2 className="text-lg font-bold text-gray-500 mb-2">Mi Bolsa de Créditos</h2>
             <p className="text-6xl font-bold text-green-600">{bar?.creditos_disponibles || 0}</p>
             <p className="text-gray-400">créditos disponibles</p>
-            <div className="mt-4 grid grid-cols-2 gap-4 text-center">
-              <div className="bg-blue-50 p-3 rounded-xl">
-                <p className="text-sm text-gray-500">Precio Compra</p>
-                <p className="text-2xl font-bold text-blue-600">₡{PRECIO_COMPRA}</p>
-              </div>
-              <div className="bg-green-50 p-3 rounded-xl">
-                <p className="text-sm text-gray-500">Precio Venta</p>
-                <p className="text-2xl font-bold text-green-600">₡{PRECIO_VENTA}</p>
-              </div>
-            </div>
           </div>
 
-          {/* Vender Créditos */}
+          {/* Vender Créditos - SOLO 1, 5, 10, 20 */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">💰 Vender Créditos a Clientes</h2>
-            <p className="text-gray-500 text-sm mb-4">Selecciona la cantidad y luego ingresa el nombre del cliente:</p>
-            <div className="grid grid-cols-4 gap-2">
-              {[1, 3, 5, 10].map(cant => (
+            <h2 className="font-bold text-lg mb-2">💰 Vender Créditos a Clientes</h2>
+            <p className="text-gray-500 text-sm mb-4">Precio: ₡{PRECIO_VENTA} por crédito</p>
+            <div className="grid grid-cols-4 gap-3">
+              {[1, 5, 10, 20].map(cant => (
                 <button
                   key={cant}
                   onClick={() => {
                     if ((bar?.creditos_disponibles || 0) >= cant) {
                       setCreditosAVender(cant)
+                      setNombreClienteInput('')
                       setModalClienteAbierto(true)
                     } else {
                       alert('❌ No tienes suficientes créditos')
                     }
                   }}
                   disabled={(bar?.creditos_disponibles || 0) < cant}
-                  className="bg-green-500 text-white py-4 rounded-xl font-bold text-lg disabled:bg-gray-300"
+                  className={`py-4 rounded-xl font-bold text-lg transition-all ${
+                    (bar?.creditos_disponibles || 0) >= cant 
+                      ? 'bg-green-500 hover:bg-green-600 text-white active:scale-95' 
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
                 >
                   {cant}
-                  <span className="block text-xs">₡{cant * PRECIO_VENTA}</span>
+                  <span className="block text-xs opacity-80">₡{cant * PRECIO_VENTA}</span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Controles de Reproducción */}
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-6 shadow-lg text-white">
+            <h2 className="font-bold text-lg mb-4">🎮 Control de Reproducción</h2>
+            
+            {cancionActual ? (
+              <div className="bg-white/20 rounded-xl p-3 mb-4">
+                <p className="font-bold truncate">{cancionActual.titulo}</p>
+                <p className="text-sm opacity-80">
+                  {pausado ? '⏸️ Pausado' : '▶️ Reproduciendo'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-white/60 mb-4">No hay canción reproduciéndose</p>
+            )}
+
+            <div className="flex gap-3 justify-center mb-4">
+              <button 
+                onClick={handleTogglePause}
+                disabled={!cancionActual}
+                className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                  cancionActual ? 'bg-white text-purple-600 hover:bg-gray-100 active:scale-95' : 'bg-white/30 text-white/50'
+                }`}
+              >
+                {pausado ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                {pausado ? 'Reanudar' : 'Pausar'}
+              </button>
+              <button 
+                onClick={handleSkip}
+                disabled={!cancionActual}
+                className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                  cancionActual ? 'bg-red-500 text-white hover:bg-red-600 active:scale-95' : 'bg-white/30 text-white/50'
+                }`}
+              >
+                <SkipForward className="w-5 h-5" />
+                Siguiente
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {volumen === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={volumen} 
+                onChange={(e) => handleVolumen(parseInt(e.target.value))} 
+                className="flex-1 accent-white"
+              />
+              <span className="w-10 text-right text-sm">{volumen}%</span>
             </div>
           </div>
 
           {/* Pendientes de aprobación */}
           {cola.filter(c => c.estado === 'pendiente').length > 0 && (
             <div className="bg-yellow-50 border-2 border-yellow-400 rounded-2xl p-4">
-              <h2 className="font-bold text-yellow-700 mb-3">⏳ Pendientes ({cola.filter(c => c.estado === 'pendiente').length})</h2>
+              <h2 className="font-bold text-yellow-700 mb-3">
+                ⏳ Pendientes de Aprobación ({cola.filter(c => c.estado === 'pendiente').length})
+              </h2>
               <div className="space-y-2">
                 {cola.filter(c => c.estado === 'pendiente').map(cancion => (
                   <div key={cancion.id} className="bg-white p-3 rounded-xl flex items-center gap-3">
@@ -658,22 +768,16 @@ export default function RockolaSaaS() {
                     </div>
                     <div className="flex gap-2">
                       <button 
-                        onClick={async () => {
-                          await actualizarEstadoCancion(cancion.id, 'aprobada')
-                          cargarDatos()
-                        }}
-                        className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold"
+                        onClick={() => handleAprobar(cancion.id)}
+                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold transition-colors active:scale-95"
                       >
-                        ✓
+                        ✓ Aprobar
                       </button>
                       <button 
-                        onClick={async () => {
-                          await eliminarCancion(cancion.id)
-                          cargarDatos()
-                        }}
-                        className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold"
+                        onClick={() => handleRechazar(cancion.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition-colors active:scale-95"
                       >
-                        ✗
+                        ✗ Rechazar
                       </button>
                     </div>
                   </div>
@@ -682,30 +786,31 @@ export default function RockolaSaaS() {
             </div>
           )}
 
-          {/* Cola actual */}
+          {/* Cola de Reproducción */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">🎵 Cola de Reproducción</h2>
-            {cancionActual && (
-              <div className="bg-yellow-100 p-3 rounded-xl mb-3 flex items-center gap-3">
-                <span className="text-2xl">▶️</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold truncate">{cancionActual.titulo}</p>
-                  <p className="text-sm text-yellow-600">Reproduciendo</p>
-                </div>
+            <h2 className="font-bold text-lg mb-4">🎵 Cola de Reproducción ({cola.filter(c => c.estado === 'aprobada').length})</h2>
+            
+            {cola.filter(c => c.estado === 'aprobada').length === 0 ? (
+              <p className="text-gray-400 text-center py-4">No hay canciones en cola</p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
+                  <div key={cancion.id} className="bg-gray-100 p-3 rounded-xl flex items-center gap-3">
+                    <span className="text-gray-400 font-bold text-lg w-8">{idx + 1}</span>
+                    <img src={cancion.thumbnail} alt="" className="w-12 h-12 rounded object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{cancion.titulo}</p>
+                    </div>
+                    <button 
+                      onClick={() => handleEliminarCola(cancion.id)}
+                      className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-100 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 font-bold w-6">{idx + 1}</span>
-                  <img src={cancion.thumbnail} alt="" className="w-10 h-10 rounded" />
-                  <p className="flex-1 truncate text-sm">{cancion.titulo}</p>
-                  <button onClick={async () => { await eliminarCancion(cancion.id); cargarDatos() }} className="text-red-400 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Links */}
@@ -717,7 +822,10 @@ export default function RockolaSaaS() {
                   <p className="font-bold">📺 TV</p>
                   <p className="text-xs text-gray-500">{getUrlTV()}</p>
                 </div>
-                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-500">
+                <button 
+                  onClick={() => copiarUrl(getUrlTV())} 
+                  className="text-blue-500 hover:text-blue-700 p-2"
+                >
                   <Copy className="w-5 h-5" />
                 </button>
               </div>
@@ -726,7 +834,10 @@ export default function RockolaSaaS() {
                   <p className="font-bold">👤 Cliente</p>
                   <p className="text-xs text-gray-500">{getUrlCliente()}</p>
                 </div>
-                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-500">
+                <button 
+                  onClick={() => copiarUrl(getUrlCliente())} 
+                  className="text-blue-500 hover:text-blue-700 p-2"
+                >
                   <Copy className="w-5 h-5" />
                 </button>
               </div>
