@@ -37,10 +37,13 @@ interface VideoBusqueda {
   duracionFormateada?: string
 }
 
+// ============= BAR POR DEFECTO =============
+const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
+
 export default function RockolaSaaS() {
   // ============= MODO Y BAR =============
   const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin' | 'seleccion'>('tv')
-  const [barId, setBarId] = useState<string>('')
+  const [barId, setBarId] = useState<string>(DEFAULT_BAR_ID)
   
   // ============= ESTADOS =============
   const [bar, setBar] = useState<Bar | null>(null)
@@ -72,9 +75,6 @@ export default function RockolaSaaS() {
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const [currentUrl, setCurrentUrl] = useState('')
   const [iniciado, setIniciado] = useState(false) // Para el botón de inicio
-
-  // ============= BAR POR DEFECTO =============
-  const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
 
   // ============= DETECTAR MODO Y BAR =============
   useEffect(() => {
@@ -411,11 +411,16 @@ export default function RockolaSaaS() {
           
           <button
             onClick={async () => {
-              setIniciado(true)
-              // Si hay canciones aprobadas, intentar reproducir
+              console.log('🎬 Botón INICIAR presionado')
+              console.log('📊 Estado actual - canciones aprobadas:', cola.filter(c => c.estado === 'aprobada').length)
+              console.log('📊 Estado actual - canción actual:', cancionActual?.titulo || 'ninguna')
+              
+              // Si hay canciones aprobadas, reproducir la primera
               if (!cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
+                console.log('🎵 Reproduciendo primera canción aprobada...')
                 await reproducirSiguiente()
               }
+              setIniciado(true)
             }}
             className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white px-16 py-6 rounded-2xl text-3xl font-bold shadow-2xl transition-all hover:scale-105 active:scale-95"
           >
@@ -434,6 +439,11 @@ export default function RockolaSaaS() {
                 <p className="text-xs text-purple-300">Créditos</p>
               </div>
             </div>
+            {/* Debug info */}
+            <div className="mt-4 text-xs text-purple-400 text-center">
+              Bar ID: {barId}<br/>
+              Conectado: {conectado ? 'Sí' : 'No'}
+            </div>
           </div>
           
           <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-4 max-w-lg shadow-2xl">
@@ -444,62 +454,70 @@ export default function RockolaSaaS() {
       )
     }
     
+    // Si está iniciado pero no hay canción, mostrar pantalla de espera
+    if (!cancionActual) {
+      return (
+        <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-purple-900 to-black flex flex-col items-center justify-center p-8">
+          <div className="relative mb-8">
+            <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 animate-pulse"></div>
+            <Music className="w-40 h-40 text-purple-400 relative z-10 animate-pulse" />
+          </div>
+          
+          <h1 className="text-7xl font-black text-white mb-4 tracking-wider">🎵 ROCKOLA</h1>
+          <p className="text-purple-300 text-3xl font-bold mb-8">{bar?.nombre || 'Esperando...'}</p>
+          
+          {/* Cola visible */}
+          {cola.filter(c => c.estado === 'aprobada').length > 0 && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 mb-8 max-w-md w-full">
+              <p className="text-purple-300 text-sm mb-2">Próximas canciones:</p>
+              <div className="space-y-2">
+                {cola.filter(c => c.estado === 'aprobada').slice(0, 3).map((cancion, idx) => (
+                  <div key={cancion.id} className="flex items-center gap-2 text-white text-left">
+                    <span className="text-purple-400 font-bold">{idx + 1}.</span>
+                    <p className="truncate text-sm">{cancion.titulo}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <p className="text-gray-400 text-xl">⏳ Esperando canciones...</p>
+          <p className="text-gray-500 text-sm mt-2">Cola: {cola.filter(c => c.estado === 'aprobada').length} canciones</p>
+          
+          <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-6 max-w-lg shadow-2xl">
+            <h2 className="text-4xl font-black text-white mb-2">🎵 MERKA 4.0</h2>
+            <p className="text-white text-xl font-medium">
+              Tu software SaaS para tu negocio<br/>directamente desde YouTube
+            </p>
+          </div>
+        </div>
+      )
+    }
+    
+    // Mostrar video
+    console.log('🎬 Renderizando video:', cancionActual.video_id, cancionActual.titulo)
     return (
       <div className="fixed inset-0 bg-black">
-        {cancionActual ? (
-          <YouTube
-            videoId={cancionActual.video_id}
-            opts={{
-              width: '100%',
-              height: '100%',
-              playerVars: { 
-                autoplay: 1, 
-                controls: 0,
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                iv_load_policy: 3,
-                disablekb: 1,
-                fs: 0
-              }
-            }}
-            onReady={onPlayerReady}
-            onEnd={onVideoEnd}
-            iframeClassName="w-full h-full absolute inset-0"
-          />
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-gray-900 via-purple-900 to-black">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 animate-pulse"></div>
-              <Music className="w-40 h-40 text-purple-400 relative z-10 animate-pulse" />
-            </div>
-            
-            <h1 className="text-7xl font-black text-white mb-4 tracking-wider">🎵 ROCKOLA</h1>
-            <p className="text-purple-300 text-3xl font-bold mb-8">{bar?.nombre || 'Esperando...'}</p>
-            
-            {/* Cola visible */}
-            {cola.filter(c => c.estado === 'aprobada').length > 0 && (
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 mb-8 max-w-md w-full">
-                <p className="text-purple-300 text-sm mb-2">Próximas canciones:</p>
-                <div className="space-y-2">
-                  {cola.filter(c => c.estado === 'aprobada').slice(0, 3).map((cancion, idx) => (
-                    <div key={cancion.id} className="flex items-center gap-2 text-white text-left">
-                      <span className="text-purple-400 font-bold">{idx + 1}.</span>
-                      <p className="truncate text-sm">{cancion.titulo}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-6 max-w-lg shadow-2xl">
-              <h2 className="text-4xl font-black text-white mb-2">🎵 MERKA 4.0</h2>
-              <p className="text-white text-xl font-medium">
-                Tu software SaaS para tu negocio<br/>directamente desde YouTube
-              </p>
-            </div>
-          </div>
-        )}
+        <YouTube
+          videoId={cancionActual.video_id}
+          opts={{
+            width: '100%',
+            height: '100%',
+            playerVars: { 
+              autoplay: 1, 
+              controls: 0,
+              modestbranding: 1,
+              rel: 0,
+              showinfo: 0,
+              iv_load_policy: 3,
+              disablekb: 1,
+              fs: 0
+            }
+          }}
+          onReady={onPlayerReady}
+          onEnd={onVideoEnd}
+          iframeClassName="w-full h-full absolute inset-0"
+        />
       </div>
     )
   }
