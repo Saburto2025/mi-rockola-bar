@@ -53,6 +53,10 @@ export default function RockolaSaaS() {
   const [busqueda, setBusqueda] = useState('')
   const [videosBusqueda, setVideosBusqueda] = useState<VideoBusqueda[]>([])
   const [buscando, setBuscando] = useState(false)
+  // Estados adicionales del cliente
+  const [nombreClienteLocal, setNombreClienteLocal] = useState('')
+  const [clienteRegistradoLocal, setClienteRegistradoLocal] = useState(false)
+  const [creditosClienteLocal, setCreditosClienteLocal] = useState(0)
   
   // ============= ADMIN =============
   const [claveInput, setClaveInput] = useState('')
@@ -80,6 +84,13 @@ export default function RockolaSaaS() {
     else setModo('tv')
 
     setCurrentUrl(window.location.origin)
+    
+    // Cargar cliente desde localStorage si existe
+    const clienteGuardado = localStorage.getItem('rockola_cliente_nombre')
+    if (clienteGuardado && modoUrl === 'cliente') {
+      setNombreClienteLocal(clienteGuardado)
+      setClienteRegistradoLocal(true)
+    }
   }, [])
 
   // ============= CARGAR DATOS =============
@@ -148,6 +159,28 @@ export default function RockolaSaaS() {
       if (unsubscribeRef.current) unsubscribeRef.current()
     }
   }, [modo, cargarDatos])
+
+  // ============= CARGAR CRÉDITOS DEL CLIENTE =============
+  useEffect(() => {
+    const cargarCreditosCliente = async () => {
+      if (modo === 'cliente' && clienteRegistradoLocal && nombreClienteLocal && supabase) {
+        try {
+          const { data } = await supabase
+            .from('clientes')
+            .select('creditos')
+            .eq('bar_id', DEFAULT_BAR_ID)
+            .eq('nombre', nombreClienteLocal)
+            .eq('activo', true)
+            .single()
+          
+          if (data) setCreditosClienteLocal(data.creditos || 0)
+        } catch (error) {
+          // Cliente no encontrado, mantener en 0
+        }
+      }
+    }
+    cargarCreditosCliente()
+  }, [modo, clienteRegistradoLocal, nombreClienteLocal])
 
   // ============= BUSCAR VIDEOS =============
   const buscarVideos = async () => {
@@ -419,39 +452,196 @@ export default function RockolaSaaS() {
   // MODO CLIENTE - SIN CONTRASEÑA
   // ================================================================
   if (modo === 'cliente') {
+    // Función para buscar créditos del cliente
+    const buscarCreditosCliente = async (nombre: string) => {
+      try {
+        const { data } = await supabase
+          .from('clientes')
+          .select('*')
+          .eq('bar_id', DEFAULT_BAR_ID)
+          .eq('nombre', nombre)
+          .eq('activo', true)
+          .single()
+        
+        if (data) {
+          setCreditosClienteLocal(data.creditos || 0)
+        } else {
+          setCreditosClienteLocal(0)
+        }
+      } catch (error) {
+        setCreditosClienteLocal(0)
+      }
+    }
+
+    // Registrar cliente
+    const registrarCliente = async () => {
+      if (!nombreClienteLocal.trim()) return
+      
+      localStorage.setItem('rockola_cliente_nombre', nombreClienteLocal.trim())
+      setClienteRegistradoLocal(true)
+      
+      // Buscar si ya existe
+      const { data } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('bar_id', DEFAULT_BAR_ID)
+        .eq('nombre', nombreClienteLocal.trim())
+        .single()
+      
+      if (data) {
+        setCreditosClienteLocal(data.creditos || 0)
+      } else {
+        // Crear cliente nuevo con 0 créditos
+        await supabase.from('clientes').insert([{
+          bar_id: DEFAULT_BAR_ID,
+          nombre: nombreClienteLocal.trim(),
+          creditos: 0,
+          activo: true
+        }])
+        setCreditosClienteLocal(0)
+      }
+    }
+
+    // Cerrar sesión de cliente
+    const cerrarSesionCliente = () => {
+      localStorage.removeItem('rockola_cliente_nombre')
+      setNombreClienteLocal('')
+      setClienteRegistradoLocal(false)
+      setCreditosClienteLocal(0)
+    }
+
+    // Agregar a cola con créditos del cliente
+    const agregarAColaCliente = async (video: VideoBusqueda) => {
+      if (!bar) return
+      
+      if (creditosClienteLocal < 1) {
+        alert('❌ No tienes créditos. Pide al administrador que te recargue.')
+        return
+      }
+
+      try {
+        await agregarCancion({
+          bar_id: bar.id,
+          video_id: video.id.videoId,
+          titulo: video.snippet.title,
+          thumbnail: video.snippet.thumbnails.default.url,
+          canal: video.snippet.channelTitle,
+          estado: 'pendiente',
+          costo_creditos: 1,
+          precio_venta: PRECIO_VENTA,
+          solicitado_por: nombreClienteLocal,
+          posicion: cola.length
+        })
+
+        // Descontar créditos del cliente en la base de datos
+        await supabase
+          .from('clientes')
+          .update({ creditos: creditosClienteLocal - 1 })
+          .eq('bar_id', DEFAULT_BAR_ID)
+          .eq('nombre', nombreClienteLocal)
+
+        setCreditosClienteLocal(prev => prev - 1)
+        setBusqueda('')
+        setVideosBusqueda([])
+        alert(`✅ "${video.snippet.title}" enviada a la cola`)
+      } catch (error) {
+        console.error('Error:', error)
+        alert('❌ Error al agregar')
+      }
+    }
+
+    // Refrescar créditos
+    const refrescarCreditos = () => {
+      if (nombreClienteLocal) {
+        buscarCreditosCliente(nombreClienteLocal)
+      }
+    }
+
+    // Pantalla de registro
+    if (!clienteRegistradoLocal) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <div className="text-center mb-6">
+              <Music className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-green-700">🍻 ROCKOLA</h2>
+              <p className="text-gray-500">{bar?.nombre}</p>
+            </div>
+            
+            <p className="text-center text-gray-600 mb-4">Ingresa tu nombre para ver tus créditos</p>
+            
+            <input
+              type="text"
+              value={nombreClienteLocal}
+              onChange={(e) => setNombreClienteLocal(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && registrarCliente()}
+              placeholder="Tu nombre..."
+              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none"
+              autoFocus
+            />
+            
+            <button
+              onClick={registrarCliente}
+              disabled={!nombreClienteLocal.trim()}
+              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-xl text-xl transition-colors"
+            >
+              ENTRAR
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-800">
         <div className="max-w-2xl mx-auto p-4">
-          {/* Header */}
+          {/* Header con nombre del bar y créditos */}
           <div className="bg-white rounded-2xl p-4 mb-4 shadow-xl">
             <div className="flex justify-between items-center">
-              <div>
+              <div className="flex-1">
                 <h1 className="text-2xl font-bold text-green-700">🍻 {bar?.nombre || 'ROCKOLA'}</h1>
-                <p className="text-gray-500">Pide tu música favorita</p>
+                <p className="text-gray-500">Hola, <span className="font-medium">{nombreClienteLocal}</span></p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-500">Mis Créditos</p>
-                <p className="text-4xl font-bold text-green-600">{creditosCliente}</p>
+                <button 
+                  onClick={refrescarCreditos}
+                  className="text-sm text-gray-400 hover:text-gray-600 mb-1"
+                >
+                  ↻ Actualizar
+                </button>
+                <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl px-6 py-3">
+                  <p className="text-white text-xs opacity-80">Mis Créditos</p>
+                  <p className="text-white text-4xl font-bold">{creditosClienteLocal}</p>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* Mensaje si no tiene créditos */}
+          {creditosClienteLocal === 0 && (
+            <div className="bg-yellow-100 border-2 border-yellow-400 rounded-2xl p-4 mb-4">
+              <p className="text-yellow-700 text-center font-medium">
+                💡 No tienes créditos. Solicita al administrador del bar que te recargue.
+              </p>
+            </div>
+          )}
+
           {/* Buscador */}
           <div className="bg-white rounded-2xl p-4 mb-4 shadow-xl">
-            <h2 className="font-bold text-lg mb-3">🔍 Buscar Música</h2>
+            <h2 className="font-bold text-lg mb-3">🔍 Buscar Música o Video</h2>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && buscarVideos()}
-                placeholder="Artista o canción..."
+                placeholder="Artista, canción o video..."
                 className="flex-1 p-3 border-2 border-gray-200 rounded-xl text-lg focus:border-green-500 focus:outline-none"
               />
               <button 
                 onClick={buscarVideos} 
                 disabled={buscando}
-                className="bg-red-600 text-white px-6 rounded-xl font-bold text-xl disabled:bg-gray-400"
+                className="bg-red-600 hover:bg-red-700 text-white px-6 rounded-xl font-bold text-xl disabled:bg-gray-400 transition-colors"
               >
                 {buscando ? '⏳' : '🔍'}
               </button>
@@ -463,16 +653,25 @@ export default function RockolaSaaS() {
                 {videosBusqueda.map((video) => (
                   <button
                     key={video.id.videoId}
-                    onClick={() => agregarACola(video)}
-                    className="w-full bg-gray-100 hover:bg-green-100 p-3 rounded-xl flex items-center gap-3 text-left transition-colors"
+                    onClick={() => agregarAColaCliente(video)}
+                    disabled={creditosClienteLocal < 1}
+                    className={`w-full p-3 rounded-xl flex items-center gap-3 text-left transition-all ${
+                      creditosClienteLocal >= 1 
+                        ? 'bg-gray-100 hover:bg-green-100 active:scale-[0.98]' 
+                        : 'bg-gray-100 opacity-50 cursor-not-allowed'
+                    }`}
                   >
                     <img src={video.snippet.thumbnails.default.url} alt="" className="w-16 h-12 rounded object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{video.snippet.title}</p>
                       <p className="text-sm text-gray-500">{video.snippet.channelTitle} • {video.duracionFormateada}</p>
                     </div>
-                    <span className="bg-green-600 text-white px-3 py-1 rounded-lg font-bold">
-                      {creditosCliente > 0 ? '✓ 1' : '❌'}
+                    <span className={`px-3 py-1 rounded-lg font-bold ${
+                      creditosClienteLocal >= 1 
+                        ? 'bg-green-600 text-white' 
+                        : 'bg-gray-300 text-gray-500'
+                    }`}>
+                      {creditosClienteLocal >= 1 ? '✓ 1' : '❌'}
                     </span>
                   </button>
                 ))}
@@ -501,7 +700,9 @@ export default function RockolaSaaS() {
                 <div key={cancion.id} className="bg-gray-100 p-3 rounded-xl flex items-center gap-3">
                   <span className="text-gray-400 font-bold text-lg w-8">{idx + 1}</span>
                   <img src={cancion.thumbnail} alt="" className="w-12 h-12 rounded object-cover" />
-                  <p className="flex-1 truncate font-medium">{cancion.titulo}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{cancion.titulo}</p>
+                  </div>
                 </div>
               ))}
               
@@ -511,11 +712,19 @@ export default function RockolaSaaS() {
                 </div>
               )}
               
-              {cola.filter(c => c.estado !== 'reproduciendo').length === 0 && !cancionActual && (
+              {cola.filter(c => c.estado === 'aprobada').length === 0 && !cancionActual && (
                 <p className="text-gray-400 text-center py-4">No hay canciones en cola</p>
               )}
             </div>
           </div>
+
+          {/* Botón cambiar usuario */}
+          <button 
+            onClick={cerrarSesionCliente}
+            className="w-full mt-4 text-white/60 hover:text-white text-sm py-2"
+          >
+            Cambiar de usuario
+          </button>
         </div>
       </div>
     )
