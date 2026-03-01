@@ -73,6 +73,9 @@ export default function RockolaSaaS() {
   const [currentUrl, setCurrentUrl] = useState('')
   const [iniciado, setIniciado] = useState(false) // Para el botón de inicio
 
+  // ============= BAR POR DEFECTO =============
+  const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
+
   // ============= DETECTAR MODO Y BAR =============
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -85,27 +88,19 @@ export default function RockolaSaaS() {
     else if (modoUrl === 'superadmin') setModo('superadmin')
     else setModo('tv')
     
-    // Establecer bar ID
-    if (barUrl) {
-      setBarId(barUrl)
-    }
+    // Establecer bar ID (usar default si no hay)
+    setBarId(barUrl || DEFAULT_BAR_ID)
     
     setCurrentUrl(window.location.origin)
   }, [])
 
   // ============= CARGAR BARES PARA SELECCIÓN =============
   useEffect(() => {
-    if (modo === 'superadmin' || !barId) {
-      // Cargar lista de bares
-      obtenerTodosLosBares().then(baresData => {
-        setBares(baresData)
-        // Si no hay barId y no es superadmin, usar el primero
-        if (!barId && modo !== 'superadmin' && baresData.length > 0) {
-          setBarId(baresData[0].id)
-        }
-      }).catch(console.error)
-    }
-  }, [modo, barId])
+    // Siempre cargar lista de bares
+    obtenerTodosLosBares().then(baresData => {
+      setBares(baresData)
+    }).catch(console.error)
+  }, [])
 
   // ============= CARGAR DATOS =============
   const cargarDatos = useCallback(async () => {
@@ -275,16 +270,20 @@ export default function RockolaSaaS() {
   }, [cancionActual, reproducirSiguiente])
 
   const onPlayerReady = (event: YouTubeEvent) => {
+    console.log('🎬 Player ready, iniciando reproducción...')
     playerRef.current = event.target
     setPlayer(event.target)
     event.target.setVolume(volumen)
-    event.target.playVideo() // Forzar reproducción
-    setIniciado(true)
+    // Intentar reproducir inmediatamente
+    setTimeout(() => {
+      event.target.playVideo()
+    }, 100)
   }
 
   // ============= REPRODUCIR SIGUIENTE AUTO =============
   useEffect(() => {
     if (modo === 'tv' && iniciado && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
+      console.log('🎵 Auto-reproduciendo siguiente canción...')
       reproducirSiguiente()
     }
   }, [modo, iniciado, cancionActual, cola, reproducirSiguiente])
@@ -411,13 +410,11 @@ export default function RockolaSaaS() {
           <p className="text-purple-300 text-3xl font-bold mb-12">{bar?.nombre || 'Cargando...'}</p>
           
           <button
-            onClick={() => {
-              if (cancionActual) {
-                setIniciado(true)
-              } else if (cola.filter(c => c.estado === 'aprobada').length > 0) {
-                reproducirSiguiente()
-              } else {
-                setIniciado(true)
+            onClick={async () => {
+              setIniciado(true)
+              // Si hay canciones aprobadas, intentar reproducir
+              if (!cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
+                await reproducirSiguiente()
               }
             }}
             className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white px-16 py-6 rounded-2xl text-3xl font-bold shadow-2xl transition-all hover:scale-105 active:scale-95"
