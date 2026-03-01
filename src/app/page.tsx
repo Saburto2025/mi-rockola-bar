@@ -746,7 +746,8 @@ export default function RockolaSaaS() {
         <div className="min-h-screen bg-gradient-to-br from-purple-900 to-black flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
             <Crown className="w-16 h-16 text-purple-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-center mb-4">🔐 Super Admin</h2>
+            <h2 className="text-2xl font-bold text-center mb-4">🔐 MERKA 4.0</h2>
+            <p className="text-center text-gray-500 mb-4">Super Admin</p>
             <input
               type="password"
               value={claveInput}
@@ -757,7 +758,7 @@ export default function RockolaSaaS() {
                   else alert('❌ Clave incorrecta')
                 }
               }}
-              placeholder="Clave de Super Admin"
+              placeholder="Clave de acceso"
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none"
             />
             <button
@@ -774,14 +775,40 @@ export default function RockolaSaaS() {
       )
     }
 
+    // Función para eliminar transacción
+    const eliminarTransaccion = async (transaccionId: string, barId: string, cantidad: number, tipo: string) => {
+      if (!confirm('¿Estás seguro de eliminar esta transacción?')) return
+      
+      try {
+        // Eliminar transacción
+        await supabase.from('transacciones').delete().eq('id', transaccionId)
+        
+        // Si es compra_software, restar créditos del bar
+        if (tipo === 'compra_software') {
+          const { data: bar } = await supabase.from('bares').select('creditos_disponibles').eq('id', barId).single()
+          if (bar) {
+            await supabase
+              .from('bares')
+              .update({ creditos_disponibles: Math.max(0, bar.creditos_disponibles - cantidad) })
+              .eq('id', barId)
+          }
+        }
+        
+        cargarDatos()
+        alert('✅ Transacción eliminada')
+      } catch (error) {
+        alert('Error al eliminar')
+      }
+    }
+
     return (
       <div className="min-h-screen bg-gray-100">
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-700 to-black p-4 text-white">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <div>
-              <h1 className="text-xl font-bold">👑 Super Admin - Dueño SaaS</h1>
-              <p className="text-sm opacity-80">Panel de Control</p>
+              <h1 className="text-xl font-bold">🎵 MERKA 4.0 - SÚPER ADMIN</h1>
+              <p className="text-sm opacity-80">Panel de Control - Dueño del SaaS</p>
             </div>
             <div className="flex gap-2">
               <button onClick={exportarExcel} className="bg-green-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
@@ -795,6 +822,13 @@ export default function RockolaSaaS() {
         </div>
 
         <div className="max-w-4xl mx-auto p-4 space-y-4">
+          {/* Precio Base */}
+          <div className="bg-gradient-to-r from-yellow-400 to-orange-400 rounded-2xl p-6 shadow-lg text-center">
+            <p className="text-white text-sm mb-1">PRECIO BASE POR CRÉDITO</p>
+            <p className="text-5xl font-bold text-white">₡{PRECIO_COMPRA}</p>
+            <p className="text-white/80 text-sm mt-1">colones por crédito</p>
+          </div>
+
           {/* Resumen */}
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
@@ -802,7 +836,7 @@ export default function RockolaSaaS() {
               <p className="text-4xl font-bold text-purple-600">{bares.length}</p>
             </div>
             <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-              <p className="text-gray-500 text-sm">Total Créditos Vendidos</p>
+              <p className="text-gray-500 text-sm">Total Créditos Activos</p>
               <p className="text-4xl font-bold text-green-600">
                 {bares.reduce((sum, b) => sum + b.creditos_disponibles, 0)}
               </p>
@@ -815,38 +849,39 @@ export default function RockolaSaaS() {
             </div>
           </div>
 
-          {/* Lista de Bares */}
+          {/* Lista de Bares - Acreditar Créditos */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">🏪 Bares</h2>
-            <div className="space-y-3">
+            <h2 className="font-bold text-lg mb-4">🏪 Bares - Acreditar Créditos</h2>
+            <div className="space-y-4">
               {bares.map(b => (
-                <div key={b.id} className="bg-gray-50 p-4 rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-lg">{b.nombre}</p>
-                    <p className="text-gray-500">Créditos: <span className="font-bold text-green-600">{b.creditos_disponibles}</span></p>
+                <div key={b.id} className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-bold text-lg">{b.nombre}</p>
+                      <p className="text-gray-500">Créditos actuales: <span className="font-bold text-green-600">{b.creditos_disponibles}</span></p>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => comprarCreditos(b.id, 50)}
-                      className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold"
-                    >
-                      +50 (₡{50 * PRECIO_COMPRA})
-                    </button>
-                    <button 
-                      onClick={() => comprarCreditos(b.id, 100)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold"
-                    >
-                      +100 (₡{100 * PRECIO_COMPRA})
-                    </button>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[50, 100, 200, 500].map(cant => (
+                      <button
+                        key={cant}
+                        onClick={() => comprarCreditos(b.id, cant)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-colors"
+                      >
+                        +{cant}
+                        <span className="block text-xs opacity-80">₡{(cant * PRECIO_COMPRA).toLocaleString()}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Últimas transacciones */}
+          {/* Últimas transacciones con opción de borrar */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
             <h2 className="font-bold text-lg mb-4">📊 Últimas Transacciones</h2>
+            <p className="text-gray-500 text-sm mb-4">Haz clic en 🗑️ para eliminar una transacción incorrecta</p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
@@ -856,11 +891,12 @@ export default function RockolaSaaS() {
                     <th className="p-2 text-left">Tipo</th>
                     <th className="p-2 text-right">Cantidad</th>
                     <th className="p-2 text-right">Total</th>
+                    <th className="p-2 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {todasTransacciones.slice(0, 20).map(t => (
-                    <tr key={t.id} className="border-b">
+                  {todasTransacciones.slice(0, 30).map(t => (
+                    <tr key={t.id} className="border-b hover:bg-gray-50">
                       <td className="p-2">{new Date(t.creado_en).toLocaleDateString()}</td>
                       <td className="p-2">{bares.find(b => b.id === t.bar_id)?.nombre || '-'}</td>
                       <td className="p-2">
@@ -869,11 +905,20 @@ export default function RockolaSaaS() {
                           t.tipo === 'venta_cliente' ? 'bg-green-100 text-green-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {t.tipo}
+                          {t.tipo === 'compra_software' ? 'Compra' : t.tipo === 'venta_cliente' ? 'Venta' : t.tipo}
                         </span>
                       </td>
-                      <td className="p-2 text-right">{t.cantidad}</td>
+                      <td className="p-2 text-right font-medium">{t.cantidad}</td>
                       <td className="p-2 text-right font-bold">₡{t.total.toLocaleString()}</td>
+                      <td className="p-2 text-center">
+                        <button 
+                          onClick={() => eliminarTransaccion(t.id, t.bar_id, t.cantidad, t.tipo)}
+                          className="text-red-400 hover:text-red-600 p-1"
+                          title="Eliminar transacción"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
