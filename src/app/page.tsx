@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import YouTube, { YouTubeEvent } from 'react-youtube'
-import { QRCodeSVG } from 'qrcode.react'
 import {
   Play, Pause, SkipForward, Volume2, VolumeX,
   Users, Music, Search, Trash2, Check, X, Crown,
@@ -400,14 +399,38 @@ export default function RockolaSaaS() {
             iframeClassName="w-full h-full absolute inset-0"
           />
         ) : (
-          <div className="h-full flex flex-col items-center justify-center text-center p-4">
-            <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
-            <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
-            <p className="text-gray-400 text-xl mb-8">{bar?.nombre || 'Cargando...'}</p>
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-gray-900 via-purple-900 to-black">
+            {/* Logo animado */}
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 animate-pulse"></div>
+              <Music className="w-40 h-40 text-purple-400 relative z-10 animate-pulse" />
+            </div>
             
-            <div className="bg-white p-6 rounded-2xl shadow-2xl">
-              <QRCodeSVG value={getUrlCliente()} size={200} />
-              <p className="text-black mt-4 font-bold text-lg">📱 Escanea para pedir música</p>
+            {/* Título */}
+            <h1 className="text-7xl font-black text-white mb-4 tracking-wider">🎵 ROCKOLA</h1>
+            <p className="text-purple-300 text-3xl font-bold mb-8">{bar?.nombre || 'Cargando...'}</p>
+            
+            {/* Cola visible */}
+            {cola.filter(c => c.estado === 'aprobada').length > 0 && (
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 mb-8 max-w-md w-full">
+                <p className="text-purple-300 text-sm mb-2">Próximas canciones:</p>
+                <div className="space-y-2">
+                  {cola.filter(c => c.estado === 'aprobada').slice(0, 3).map((cancion, idx) => (
+                    <div key={cancion.id} className="flex items-center gap-2 text-white text-left">
+                      <span className="text-purple-400 font-bold">{idx + 1}.</span>
+                      <p className="truncate text-sm">{cancion.titulo}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Mensaje promocional MERKA 4.0 */}
+            <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-6 max-w-lg shadow-2xl">
+              <h2 className="text-4xl font-black text-white mb-2">🎵 MERKA 4.0</h2>
+              <p className="text-white text-xl font-medium">
+                Tu software SaaS para tu negocio<br/>directamente desde YouTube
+              </p>
             </div>
           </div>
         )}
