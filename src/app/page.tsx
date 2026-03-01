@@ -19,6 +19,9 @@ const CLAVE_ADMIN = "1234"
 const CLAVE_SUPER_ADMIN = "rockola2024"
 const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
 
+// BAR ID POR DEFECTO (puede venir de URL o usar el primero de la lista)
+const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
+
 interface VideoBusqueda {
   id: { videoId: string }
   snippet: {
@@ -81,7 +84,7 @@ export default function RockolaSaaS() {
   const [currentUrl, setCurrentUrl] = useState('')
 
   // ============= BAR ID ACTUAL =============
-  const barId = barSeleccionado?.id || bar?.id || ''
+  const barId = barSeleccionado?.id || bar?.id || DEFAULT_BAR_ID
 
   // ============= DETECTAR MODO AL CARGAR =============
   useEffect(() => {
@@ -141,7 +144,7 @@ export default function RockolaSaaS() {
 
   // ============= SUSCRIPCIÓN A CAMBIOS =============
   useEffect(() => {
-    if (!barId && modo !== 'superadmin') return
+    if (modo === 'superadmin') return
     
     cargarDatos()
 
