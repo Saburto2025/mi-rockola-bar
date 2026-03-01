@@ -5,22 +5,23 @@ import YouTube, { YouTubeEvent } from 'react-youtube'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Play, Pause, SkipForward, Volume2, VolumeX,
-  Users, CreditCard, Music, Search, Trash2, Check, X, Crown,
-  DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
-  Plus, Minus, LogOut, Copy, Calendar, TrendingUp
+  Users, Music, Search, Trash2, Check, X, Crown,
+  DollarSign, BarChart3, Loader2, Wifi, WifiOff, ShoppingCart,
+  Plus, LogOut, Copy, TrendingUp, FileSpreadsheet
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, verificarConexion, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
-// Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
 
 // ============= CONFIGURACIÓN =============
 const CLAVE_ADMIN = "1234"
 const CLAVE_SUPER_ADMIN = "rockola2024"
 const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
-
-// BAR ID POR DEFECTO (puede venir de URL o usar el primero de la lista)
 const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
+
+// Precios fijos
+const PRECIO_COMPRA = 40  // Colones - lo que paga el bar al dueño del SaaS
+const PRECIO_VENTA = 60   // Colones - lo que cobra el bar al cliente
 
 interface VideoBusqueda {
   id: { videoId: string }
@@ -28,17 +29,15 @@ interface VideoBusqueda {
     title: string
     thumbnails: { default: { url: string }; medium: { url: string } }
     channelTitle: string
-    description: string
   }
-  duracionMinutos?: number
   duracionFormateada?: string
 }
 
 export default function RockolaSaaS() {
-  // ============= DETECTAR MODO POR URL =============
+  // ============= MODO =============
   const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin'>('tv')
   
-  // ============= ESTADOS GENERALES =============
+  // ============= ESTADOS =============
   const [bar, setBar] = useState<Bar | null>(null)
   const [bares, setBares] = useState<Bar[]>([])
   const [cola, setCola] = useState<CancionCola[]>([])
@@ -48,46 +47,29 @@ export default function RockolaSaaS() {
   const [cargando, setCargando] = useState(true)
   const [conectado, setConectado] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [diagnostico, setDiagnostico] = useState<any>(null)
-
-  // ============= ESTADOS DE AUTENTICACIÓN =============
-  const [claveInput, setClaveInput] = useState('')
-  const [isAuthed, setIsAuthed] = useState(false)
-  const [barSeleccionado, setBarSeleccionado] = useState<Bar | null>(null)
-
-  // ============= ESTADOS DE BÚSQUEDA =============
+  
+  // ============= CLIENTE =============
+  const [creditosCliente, setCreditosCliente] = useState(0)
   const [busqueda, setBusqueda] = useState('')
   const [videosBusqueda, setVideosBusqueda] = useState<VideoBusqueda[]>([])
   const [buscando, setBuscando] = useState(false)
-
-  // ============= ESTADOS DE CLIENTE =============
-  const [nombreCliente, setNombreCliente] = useState('')
-  const [creditosCliente, setCreditosCliente] = useState(0)
-  const [clienteRegistrado, setClienteRegistrado] = useState(false)
-  const [modalRecarga, setModalRecarga] = useState(false)
-  const [creditosRecarga, setCreditosRecarga] = useState('')
-
-  // ============= ESTADOS DE MODAL =============
-  const [modalClienteAbierto, setModalClienteAbierto] = useState(false)
-  const [creditosAVender, setCreditosAVender] = useState(0)
-  const [nombreClienteInput, setNombreClienteInput] = useState('')
-
-  // ============= ESTADOS DE TRANSACCIONES =============
+  
+  // ============= ADMIN =============
+  const [claveInput, setClaveInput] = useState('')
+  const [isAuthed, setIsAuthed] = useState(false)
   const [transacciones, setTransacciones] = useState<Transaccion[]>([])
   const [todasTransacciones, setTodasTransacciones] = useState<Transaccion[]>([])
-
+  const [nombreClienteInput, setNombreClienteInput] = useState('')
+  const [creditosAVender, setCreditosAVender] = useState(0)
+  const [modalClienteAbierto, setModalClienteAbierto] = useState(false)
+  
   // ============= PLAYER =============
   const [player, setPlayer] = useState<any>(null)
   const playerRef = useRef<any>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
-
-  // ============= URL ACTUAL =============
   const [currentUrl, setCurrentUrl] = useState('')
 
-  // ============= BAR ID ACTUAL =============
-  const barId = barSeleccionado?.id || bar?.id || DEFAULT_BAR_ID
-
-  // ============= DETECTAR MODO AL CARGAR =============
+  // ============= DETECTAR MODO =============
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const modoUrl = params.get('modo')
@@ -98,125 +80,87 @@ export default function RockolaSaaS() {
     else setModo('tv')
 
     setCurrentUrl(window.location.origin)
-    
-    // Cargar diagnóstico de variables de entorno
-    fetch('/api/diagnostico')
-      .then(res => res.json())
-      .then(data => {
-        console.log('📊 Diagnóstico:', data)
-        setDiagnostico(data)
-      })
-      .catch(err => console.error('Error cargando diagnóstico:', err))
   }, [])
 
-  // ============= CARGAR DATOS SEGÚN MODO =============
-  const cargarDatos = useCallback(async (barIdToUse?: string) => {
-    console.log('🔄 cargarDatos iniciado. Modo:', modo, 'barIdToUse:', barIdToUse)
-    
+  // ============= CARGAR DATOS =============
+  const cargarDatos = useCallback(async () => {
     try {
       setCargando(true)
       setError(null)
 
-      // Verificar conexión a Supabase
       if (!supabase) {
-        throw new Error('Cliente Supabase no inicializado. Verifica las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY')
+        throw new Error('Supabase no configurado')
       }
 
       if (modo === 'superadmin') {
-        console.log('📊 Cargando datos de Super Admin...')
         const baresData = await obtenerTodosLosBares()
         setBares(baresData)
         const transData = await obtenerTodasTransacciones()
         setTodasTransacciones(transData)
         setConectado(true)
-        console.log('✅ Super Admin datos cargados')
         return
       }
 
-      const id = barIdToUse || DEFAULT_BAR_ID
-      console.log('📊 Cargando datos del bar:', id)
-      
-      // Cargar datos del bar
-      const barData = await obtenerBar(id)
-      console.log('✅ Bar cargado:', barData?.nombre)
+      const barData = await obtenerBar(DEFAULT_BAR_ID)
       setBar(barData)
 
-      // Cargar cola
-      const colaData = await obtenerCola(id)
-      console.log('✅ Cola cargada:', colaData.length, 'canciones')
+      const colaData = await obtenerCola(DEFAULT_BAR_ID)
       setCola(colaData)
 
       const actual = colaData.find(c => c.estado === 'reproduciendo')
       setCancionActual(actual || null)
 
-      // Cargar transacciones
-      const transData = await obtenerTransacciones(id)
+      const transData = await obtenerTransacciones(DEFAULT_BAR_ID)
       setTransacciones(transData)
 
       setConectado(true)
-      console.log('✅ Datos cargados exitosamente')
     } catch (err: any) {
-      console.error('❌ Error cargando datos:', err)
-      setError(err.message || 'Error al conectar con la base de datos')
+      console.error('Error:', err)
+      setError(err.message || 'Error de conexión')
       setConectado(false)
     } finally {
       setCargando(false)
     }
   }, [modo])
 
-  // ============= SUSCRIPCIÓN A CAMBIOS =============
+  // ============= SUSCRIPCIÓN =============
   useEffect(() => {
-    console.log('🔄 useEffect suscripción - modo:', modo)
-    
     if (modo === 'superadmin') {
-      // Para superadmin, cargar datos directamente sin suscripción en tiempo real
       cargarDatos()
       return
     }
     
-    // Cargar datos iniciales
-    cargarDatos(DEFAULT_BAR_ID)
+    cargarDatos()
 
-    // Suscribirse a cambios en tiempo real
-    const id = DEFAULT_BAR_ID
-    
-    unsubscribeRef.current = suscribirseACambios(id, {
-      onBarCambio: (nuevoBar) => {
-        setBar(nuevoBar)
-        if (barSeleccionado?.id === nuevoBar.id) {
-          setBarSeleccionado(nuevoBar)
-        }
-      },
+    unsubscribeRef.current = suscribirseACambios(DEFAULT_BAR_ID, {
+      onBarCambio: (nuevoBar) => setBar(nuevoBar),
       onColaCambio: (nuevaCola) => {
         setCola(nuevaCola)
         const actual = nuevaCola.find(c => c.estado === 'reproduciendo')
         setCancionActual(actual || null)
       },
       onTransaccionCambio: () => {
-        obtenerTransacciones(id).then(setTransacciones)
+        obtenerTransacciones(DEFAULT_BAR_ID).then(setTransacciones)
       }
     })
 
     return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current()
-      }
+      if (unsubscribeRef.current) unsubscribeRef.current()
     }
   }, [modo, cargarDatos])
 
-  // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
+  // ============= BUSCAR VIDEOS =============
   const buscarVideos = async () => {
     if (!busqueda.trim()) return
     setBuscando(true)
 
     try {
       const query = encodeURIComponent(busqueda)
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
-
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
       const res = await fetch(url)
       const data = await res.json()
 
-      if (data.items && data.items.length > 0) {
+      if (data.items?.length > 0) {
         const videoIds = data.items.map((v: VideoBusqueda) => v.id.videoId).join(',')
         const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`
         const detailsRes = await fetch(detailsUrl)
@@ -225,14 +169,15 @@ export default function RockolaSaaS() {
         const videosConDuracion = data.items.map((v: VideoBusqueda) => {
           const detail = detailsData.items?.find((d: any) => d.id === v.id.videoId)
           const duration = detail?.contentDetails?.duration || ''
-          const minutos = parseDuration(duration)
-          return { 
-            ...v, 
-            duracionMinutos: minutos,
-            duracionFormateada: formatDuration(minutos)
-          }
+          const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
+          const hours = parseInt((match?.[1] || '0H').replace('H', '')) || 0
+          const minutes = parseInt((match?.[2] || '0M').replace('M', '')) || 0
+          const seconds = parseInt((match?.[3] || '0S').replace('S', '')) || 0
+          const duracionFormateada = hours > 0 
+            ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+            : `${minutes}:${seconds.toString().padStart(2, '0')}`
+          return { ...v, duracionFormateada }
         })
-
         setVideosBusqueda(videosConDuracion)
       } else {
         setVideosBusqueda([])
@@ -244,26 +189,12 @@ export default function RockolaSaaS() {
     setBuscando(false)
   }
 
-  const parseDuration = (duration: string): number => {
-    const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
-    const hours = parseInt((match?.[1] || '0H').replace('H', '')) || 0
-    const minutes = parseInt((match?.[2] || '0M').replace('M', '')) || 0
-    return hours * 60 + minutes
-  }
-
-  const formatDuration = (minutos: number): string => {
-    const h = Math.floor(minutos / 60)
-    const m = minutos % 60
-    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}` : `${m}:00`
-  }
-
-  // ============= FUNCIONES DE COLA =============
+  // ============= AGREGAR A COLA =============
   const agregarACola = async (video: VideoBusqueda) => {
     if (!bar) return
-    const precioCancion = bar.precio_venta || 1
     
-    if (creditosCliente < precioCancion) {
-      alert(`❌ No tienes suficientes créditos. Necesitas ${precioCancion} créditos. Pide al administrador que te recargue.`)
+    if (creditosCliente < 1) {
+      alert('❌ No tienes créditos. Pide al administrador que te recargue.')
       return
     }
 
@@ -275,73 +206,29 @@ export default function RockolaSaaS() {
         thumbnail: video.snippet.thumbnails.default.url,
         canal: video.snippet.channelTitle,
         estado: 'pendiente',
-        costo_creditos: bar.precio_compra,
-        precio_venta: bar.precio_venta,
-        solicitado_por: nombreCliente || 'Cliente',
+        costo_creditos: PRECIO_VENTA,
+        precio_venta: PRECIO_VENTA,
+        solicitado_por: 'Cliente',
         posicion: cola.length
       })
 
-      // Descontar del saldo del cliente
-      const nuevosCreditos = creditosCliente - precioCancion
-      setCreditosCliente(nuevosCreditos)
-      
-      await supabase.from('transacciones').insert([{
-        bar_id: bar.id,
-        tipo: 'consumo',
-        cantidad: 1,
-        precio_unitario: precioCancion,
-        total: precioCancion,
-        cancion_titulo: video.snippet.title,
-        cliente_nombre: nombreCliente,
-        descripcion: `Video solicitado: ${video.snippet.title}`
-      }])
-
+      setCreditosCliente(prev => prev - 1)
       setBusqueda('')
       setVideosBusqueda([])
-      alert(`✅ Video enviado a la cola. Se descontaron ${precioCancion} créditos de tu saldo.`)
+      alert(`✅ "${video.snippet.title}" agregado a la cola`)
     } catch (error) {
-      console.error('Error agregando video:', error)
-      alert('❌ Error al agregar video')
-    }
-  }
-
-  const aprobarCancion = async (cancionId: string) => {
-    try {
-      await actualizarEstadoCancion(cancionId, 'aprobada')
-    } catch (error) {
-      console.error('Error aprobando:', error)
-      alert('❌ Error al aprobar')
-    }
-  }
-
-  const rechazarCancion = async (cancionId: string) => {
-    try {
-      await eliminarCancion(cancionId)
-    } catch (error) {
-      console.error('Error rechazando:', error)
-    }
-  }
-
-  const eliminarDeCola = async (cancionId: string) => {
-    try {
-      await eliminarCancion(cancionId)
-    } catch (error) {
-      console.error('Error eliminando:', error)
+      console.error('Error:', error)
+      alert('❌ Error al agregar')
     }
   }
 
   // ============= REPRODUCCIÓN =============
   const reproducirSiguiente = useCallback(async () => {
     const colaAprobada = cola.filter(c => c.estado === 'aprobada')
-
     if (colaAprobada.length > 0) {
       const siguiente = colaAprobada[0]
-      try {
-        await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
-        setCancionActual(siguiente)
-      } catch (error) {
-        console.error('Error reproduciendo:', error)
-      }
+      await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
+      setCancionActual(siguiente)
     } else {
       setCancionActual(null)
     }
@@ -349,13 +236,9 @@ export default function RockolaSaaS() {
 
   const onVideoEnd = useCallback(async () => {
     if (cancionActual) {
-      try {
-        await eliminarCancion(cancionActual.id)
-        setCancionActual(null)
-        setTimeout(() => reproducirSiguiente(), 500)
-      } catch (error) {
-        console.error('Error terminando video:', error)
-      }
+      await eliminarCancion(cancionActual.id)
+      setCancionActual(null)
+      setTimeout(() => reproducirSiguiente(), 500)
     }
   }, [cancionActual, reproducirSiguiente])
 
@@ -367,44 +250,23 @@ export default function RockolaSaaS() {
 
   const togglePause = () => {
     if (player) {
-      if (pausado) {
-        player.playVideo()
-      } else {
-        player.pauseVideo()
-      }
+      if (pausado) player.playVideo()
+      else player.pauseVideo()
       setPausado(!pausado)
     }
   }
 
-  const cambiarVolumen = (nuevoVolumen: number) => {
-    if (player) {
-      player.setVolume(nuevoVolumen)
+  // ============= REPRODUCIR SIGUIENTE AUTO =============
+  useEffect(() => {
+    if (modo === 'tv' && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
+      reproducirSiguiente()
     }
-    setVolumen(nuevoVolumen)
-  }
+  }, [modo, cancionActual, cola, reproducirSiguiente])
 
-  // ============= TRANSACCIONES =============
-  const comprarCreditosSoftware = async (cantidad: number, precioUnitario: number) => {
-    if (!barSeleccionado) return
-    try {
-      await comprarCreditosProveedor(barSeleccionado.id, cantidad, precioUnitario)
-      await cargarDatos()
-      alert(`✅ Vendidos ${cantidad} créditos a $${precioUnitario} c/u = $${cantidad * precioUnitario}`)
-    } catch (error) {
-      console.error('Error vendiendo créditos:', error)
-      alert('❌ Error al vender créditos')
-    }
-  }
-
-  const abrirModalCliente = (cantidad: number) => {
-    setCreditosAVender(cantidad)
-    setNombreClienteInput('')
-    setModalClienteAbierto(true)
-  }
-
+  // ============= ADMIN: VENDER CRÉDITOS =============
   const confirmarVentaCliente = async () => {
     if (!nombreClienteInput.trim()) {
-      alert('❌ Ingresa el nombre del cliente')
+      alert('Ingresa el nombre del cliente')
       return
     }
     if (!bar) return
@@ -413,21 +275,50 @@ export default function RockolaSaaS() {
       await venderCreditosCliente(bar.id, nombreClienteInput.trim(), creditosAVender)
       await cargarDatos()
       setModalClienteAbierto(false)
-      alert(`✅ Vendidos ${creditosAVender} créditos a ${nombreClienteInput.trim()} = $${creditosAVender * bar.precio_venta}`)
+      setNombreClienteInput('')
+      alert(`✅ ${creditosAVender} créditos vendidos a ${nombreClienteInput} = ₡${creditosAVender * PRECIO_VENTA}`)
     } catch (error: any) {
-      console.error('Error vendiendo:', error)
-      alert(error.message || '❌ Error al vender créditos')
+      alert(error.message || 'Error al vender')
     }
   }
 
-  // ============= REPRODUCIR SIGUIENTE AUTOMÁTICAMENTE =============
-  useEffect(() => {
-    if (modo === 'tv' && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
-      reproducirSiguiente()
+  // ============= SUPER ADMIN: COMPRAR CRÉDITOS =============
+  const comprarCreditos = async (barId: string, cantidad: number) => {
+    try {
+      await comprarCreditosProveedor(barId, cantidad, PRECIO_COMPRA)
+      await cargarDatos()
+      alert(`✅ ${cantidad} créditos agregados = ₡${cantidad * PRECIO_COMPRA}`)
+    } catch (error) {
+      alert('Error al comprar créditos')
     }
-  }, [modo, cancionActual, cola, reproducirSiguiente])
+  }
 
-  // ============= URLS EXCLUSIVAS =============
+  // ============= EXPORTAR EXCEL =============
+  const exportarExcel = () => {
+    const datos = todasTransacciones.map(t => ({
+      Fecha: new Date(t.creado_en).toLocaleDateString(),
+      Bar: bares.find(b => b.id === t.bar_id)?.nombre || 'N/A',
+      Tipo: t.tipo,
+      Cantidad: t.cantidad,
+      'Precio Unitario': t.precio_unitario,
+      Total: t.total,
+      Cliente: t.cliente_nombre || '-'
+    }))
+    
+    const csv = [
+      Object.keys(datos[0] || {}).join(','),
+      ...datos.map(d => Object.values(d).join(','))
+    ].join('\n')
+    
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `reporte_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+  }
+
+  // ============= URLS =============
   const getUrlCliente = () => `${currentUrl}?modo=cliente`
   const getUrlAdmin = () => `${currentUrl}?modo=admin`
   const getUrlSuperAdmin = () => `${currentUrl}?modo=superadmin`
@@ -435,13 +326,29 @@ export default function RockolaSaaS() {
 
   const copiarUrl = (url: string) => {
     navigator.clipboard.writeText(url)
-    alert('✅ Link copiado al portapapeles')
+    alert('✅ Link copiado')
+  }
+
+  // ============= PANTALLA DE ERROR =============
+  if (error && modo !== 'tv') {
+    return (
+      <div className="min-h-screen bg-red-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+          <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-4">Error de Conexión</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button onClick={() => cargarDatos()} className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ============= PANTALLA DE CARGA =============
   if (cargando && modo !== 'tv') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-black to-blue-900 flex items-center justify-center">
+      <div className="min-h-screen bg-purple-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-16 h-16 text-yellow-400 animate-spin mx-auto mb-4" />
           <p className="text-white text-xl">Conectando...</p>
@@ -450,153 +357,19 @@ export default function RockolaSaaS() {
     )
   }
 
-  // ============= PANTALLA DE ERROR =============
-  if (error && modo !== 'tv') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-xl w-full shadow-2xl text-center">
-          <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Error de Conexión</h2>
-          <p className="text-gray-600 mb-4 font-mono text-sm bg-gray-100 p-3 rounded-lg">{error}</p>
-          
-          {/* Información de diagnóstico */}
-          <div className="text-left text-sm text-gray-500 mb-4 p-3 bg-gray-50 rounded-lg overflow-auto max-h-60">
-            <p><strong>Modo:</strong> {modo}</p>
-            <p><strong>Bar ID:</strong> {DEFAULT_BAR_ID}</p>
-            <hr className="my-2" />
-            {diagnostico ? (
-              <>
-                <p className="font-bold text-gray-700 mb-1">Variables de Entorno:</p>
-                <p><strong>SUPABASE_URL:</strong> {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_URL?.configured ? 
-                  `✅ ${diagnostico.variables.NEXT_PUBLIC_SUPABASE_URL.value}` : '❌ NO CONFIGURADA'}</p>
-                <p><strong>SUPABASE_KEY:</strong> {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_ANON_KEY?.configured ? 
-                  `✅ ${diagnostico.variables.NEXT_PUBLIC_SUPABASE_ANON_KEY.prefix}` : '❌ NO CONFIGURADA'}</p>
-                {diagnostico.variables?.NEXT_PUBLIC_SUPABASE_ANON_KEY?.configured && (
-                  <p><strong>Formato válido:</strong> {diagnostico.variables.NEXT_PUBLIC_SUPABASE_ANON_KEY.isValidFormat ? '✅ Sí (eyJ...)' : '❌ NO (debe empezar con eyJ)'}</p>
-                )}
-                <p><strong>YOUTUBE_KEY:</strong> {diagnostico.variables?.NEXT_PUBLIC_YOUTUBE_API_KEY?.configured ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
-              </>
-            ) : (
-              <p className="text-yellow-600">Cargando diagnóstico...</p>
-            )}
-          </div>
-          
-          <div className="flex gap-2">
-            <button onClick={() => window.location.reload()} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl">
-              Recargar Página
-            </button>
-            <button onClick={() => cargarDatos()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl">
-              Reintentar
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ============= MODAL PARA NOMBRE DE CLIENTE (ADMIN) =============
-  const ModalNombreCliente = () => (
-    <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 ${modalClienteAbierto ? '' : 'hidden'}`}>
-      <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">📝 Nombre del Cliente</h3>
-        <p className="text-gray-600 mb-4">Vendiendo <strong>{creditosAVender} crédito{creditosAVender > 1 ? 's' : ''}</strong> (${bar ? creditosAVender * bar.precio_venta : 0})</p>
-        <input
-          type="text"
-          value={nombreClienteInput}
-          onChange={(e) => setNombreClienteInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && confirmarVentaCliente()}
-          placeholder="Escribe el nombre completo..."
-          autoFocus
-          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none"
-        />
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setModalClienteAbierto(false)}
-            className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-colors"
-          >
-            Cancelar
-          </button>
-          <button 
-            onClick={confirmarVentaCliente}
-            disabled={!nombreClienteInput.trim()}
-            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            Confirmar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
-  // ============= MODAL PARA RECARGA DE CRÉDITOS (CLIENTE) =============
-  const ModalRecargaCreditos = () => (
-    <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 ${modalRecarga ? '' : 'hidden'}`}>
-      <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">💰 Recargar Créditos</h3>
-        <p className="text-gray-600 mb-4">Ingresa la cantidad de créditos que el administrador te ha vendido:</p>
-        <input
-          type="number"
-          value={creditosRecarga}
-          onChange={(e) => setCreditosRecarga(e.target.value)}
-          placeholder="Cantidad de créditos..."
-          autoFocus
-          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none"
-        />
-        <div className="flex gap-2">
-          <button 
-            onClick={() => { setModalRecarga(false); setCreditosRecarga('') }}
-            className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-colors"
-          >
-            Cancelar
-          </button>
-          <button 
-            onClick={() => {
-              const creditos = parseInt(creditosRecarga)
-              if (creditos > 0) {
-                setCreditosCliente(creditos)
-                setModalRecarga(false)
-                setCreditosRecarga('')
-                alert(`✅ Saldo actualizado a ${creditos} créditos`)
-              }
-            }}
-            disabled={!creditosRecarga || parseInt(creditosRecarga) <= 0}
-            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            Confirmar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
   // ================================================================
-  // MODO TV - PANTALLA LIMPIA SOLO VIDEO
+  // MODO TV - SOLO VIDEO SIN BOTONES
   // ================================================================
   if (modo === 'tv') {
-    // Mostrar error si hay problemas de conexión
     if (error) {
       return (
         <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
-          <div className="text-center max-w-lg w-full">
+          <div className="text-center max-w-lg">
             <WifiOff className="w-20 h-20 text-red-500 mx-auto mb-4" />
             <h1 className="text-3xl font-bold text-white mb-4">Error de Conexión</h1>
             <p className="text-gray-400 mb-4">{error}</p>
-            
-            {/* Diagnóstico en pantalla */}
-            <div className="bg-gray-900 rounded-lg p-4 mb-4 text-left text-sm overflow-auto max-h-60">
-              <p className="text-yellow-400 font-bold mb-2">📊 Diagnóstico:</p>
-              <p className="text-gray-300">Supabase URL: {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
-              <p className="text-gray-300">Supabase Key: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
-              <p className="text-gray-300">YouTube Key: {process.env.NEXT_PUBLIC_YOUTUBE_API_KEY ? '✅ Configurada' : '❌ NO CONFIGURADA'}</p>
-              <p className="text-gray-300">Bar ID: {DEFAULT_BAR_ID}</p>
-              <p className="text-gray-300">Cliente Supabase: {supabase ? '✅ Inicializado' : '❌ NULL'}</p>
-            </div>
-            
-            <button 
-              onClick={() => window.location.reload()} 
-              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl"
-            >
-              Recargar Página
+            <button onClick={() => cargarDatos()} className="bg-purple-600 text-white py-3 px-8 rounded-xl font-bold">
+              Reintentar
             </button>
           </div>
         </div>
@@ -604,62 +377,37 @@ export default function RockolaSaaS() {
     }
     
     return (
-      <div className="fixed inset-0 bg-black overflow-hidden">
+      <div className="fixed inset-0 bg-black">
         {cancionActual ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <YouTube
-              videoId={cancionActual.video_id}
-              opts={{
-                width: '100%',
-                height: '100%',
-                playerVars: { 
-                  autoplay: 1, 
-                  controls: 0,
-                  modestbranding: 1,
-                  rel: 0,
-                  showinfo: 0,
-                  iv_load_policy: 3,
-                  disablekb: 1,
-                  fs: 0,
-                  playsinline: 1,
-                  origin: typeof window !== 'undefined' ? window.location.origin : ''
-                }
-              }}
-              onReady={onPlayerReady}
-              onEnd={onVideoEnd}
-              className="w-full h-full"
-              iframeClassName="w-full h-full absolute inset-0"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pointer-events-none">
-              <p className="text-white text-xl font-bold truncate">{cancionActual.titulo}</p>
-              <p className="text-gray-300 text-sm">Solicitado por: {cancionActual.solicitado_por}</p>
-            </div>
-          </div>
+          <YouTube
+            videoId={cancionActual.video_id}
+            opts={{
+              width: '100%',
+              height: '100%',
+              playerVars: { 
+                autoplay: 1, 
+                controls: 0,
+                modestbranding: 1,
+                rel: 0,
+                showinfo: 0,
+                iv_load_policy: 3,
+                disablekb: 1,
+                fs: 0
+              }
+            }}
+            onReady={onPlayerReady}
+            onEnd={onVideoEnd}
+            iframeClassName="w-full h-full absolute inset-0"
+          />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-center">
-              <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
-              <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
-              <p className="text-gray-400 text-xl mb-4">{bar?.nombre || (cargando ? 'Conectando...' : 'Esperando conexión...')}</p>
-              
-              {/* Mostrar diagnóstico si no hay bar y está cargando */}
-              {cargando && !bar && (
-                <div className="bg-gray-900 rounded-lg p-4 mb-4 text-left text-sm max-w-md mx-auto">
-                  <p className="text-yellow-400 font-bold mb-2">📊 Verificando conexión...</p>
-                  <p className="text-gray-300">Supabase URL: {process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅' : '❌'}</p>
-                  <p className="text-gray-300">Supabase Key: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅' : '❌'}</p>
-                  <p className="text-gray-300">Cliente: {supabase ? '✅' : '❌'}</p>
-                </div>
-              )}
-              
-              <p className="text-gray-500 text-lg mb-12">Esperando canciones...</p>
-              
-              {currentUrl && (
-                <div className="bg-white p-6 rounded-2xl inline-block shadow-2xl">
-                  <QRCodeSVG value={getUrlCliente()} size={180} />
-                  <p className="text-black mt-4 font-bold text-lg">📱 Escanea para pedir música</p>
-                </div>
-              )}
+          <div className="h-full flex flex-col items-center justify-center text-center p-4">
+            <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
+            <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
+            <p className="text-gray-400 text-xl mb-8">{bar?.nombre || 'Cargando...'}</p>
+            
+            <div className="bg-white p-6 rounded-2xl shadow-2xl">
+              <QRCodeSVG value={getUrlCliente()} size={200} />
+              <p className="text-black mt-4 font-bold text-lg">📱 Escanea para pedir música</p>
             </div>
           </div>
         )}
@@ -668,175 +416,103 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO CLIENTE - EXCLUSIVO PARA CLIENTES CON QR Y SALDO
+  // MODO CLIENTE - SIN CONTRASEÑA
   // ================================================================
   if (modo === 'cliente') {
-    if (!clienteRegistrado) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <Users className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-center mb-2">🍻 ROCKOLA</h2>
-            <p className="text-center text-gray-500 mb-2">{bar?.nombre}</p>
-            <p className="text-center text-gray-400 mb-6 text-sm">Pide tu música o video favorito</p>
-            
-            <input
-              type="text"
-              value={nombreCliente}
-              onChange={(e) => setNombreCliente(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && nombreCliente.trim() && setClienteRegistrado(true)}
-              placeholder="Tu nombre completo..."
-              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none"
-            />
-            
-            <button
-              onClick={() => nombreCliente.trim() && setClienteRegistrado(true)}
-              disabled={!nombreCliente.trim()}
-              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors"
-            >
-              ENTRAR
-            </button>
-          </div>
-        </div>
-      )
-    }
-
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
-        <ModalRecargaCreditos />
-        
-        <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 sticky top-0 z-10">
-          <div className="max-w-2xl mx-auto">
+      <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-800">
+        <div className="max-w-2xl mx-auto p-4">
+          {/* Header */}
+          <div className="bg-white rounded-2xl p-4 mb-4 shadow-xl">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-xl font-bold">🍻 Hola, {nombreCliente}!</h1>
-                <p className="text-sm opacity-80">{bar?.nombre}</p>
+                <h1 className="text-2xl font-bold text-green-700">🍻 {bar?.nombre || 'ROCKOLA'}</h1>
+                <p className="text-gray-500">Pide tu música favorita</p>
               </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setModalRecarga(true)}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-full font-bold text-lg flex items-center gap-2"
-                >
-                  💰 {creditosCliente} <Plus className="w-4 h-4" />
-                </button>
-                <button onClick={() => { setClienteRegistrado(false); setNombreCliente(''); setCreditosCliente(0) }} className="bg-black/20 p-2 rounded-lg hover:bg-black/30">
-                  <LogOut className="w-5 h-5" />
-                </button>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Mis Créditos</p>
+                <p className="text-4xl font-bold text-green-600">{creditosCliente}</p>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="max-w-2xl mx-auto p-4 space-y-4">
-          {/* Mi saldo */}
-          <div className="bg-gradient-to-r from-yellow-600 to-yellow-700 rounded-xl p-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-yellow-200 text-sm">MI SALDO</p>
-                <p className="text-4xl font-bold">{creditosCliente} créditos</p>
-              </div>
-              <button 
-                onClick={() => setModalRecarga(true)}
-                className="bg-white text-yellow-700 px-4 py-2 rounded-lg font-bold hover:bg-yellow-100"
-              >
-                Recargar
-              </button>
-            </div>
-            <p className="text-yellow-200 text-sm mt-2">
-              💡 Cada canción cuesta {bar?.precio_venta || 1} créditos
-            </p>
-          </div>
-
-          {/* QR para compartir */}
-          <div className="bg-gray-800 rounded-xl p-4 text-center">
-            <p className="text-gray-400 mb-3 text-sm">📱 Comparte este QR con otros clientes</p>
-            <div className="bg-white p-2 rounded-lg inline-block">
-              <QRCodeSVG value={getUrlCliente()} size={100} />
             </div>
           </div>
 
           {/* Buscador */}
-          <div className="bg-gray-800 rounded-xl p-4">
-            <h3 className="font-bold mb-3 text-lg">🔍 Buscar Música o Videos</h3>
-            <div className="flex gap-2 mb-3">
+          <div className="bg-white rounded-2xl p-4 mb-4 shadow-xl">
+            <h2 className="font-bold text-lg mb-3">🔍 Buscar Música</h2>
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && buscarVideos()}
-                placeholder="Artista, canción, video..."
-                className="flex-1 bg-gray-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                placeholder="Artista o canción..."
+                className="flex-1 p-3 border-2 border-gray-200 rounded-xl text-lg focus:border-green-500 focus:outline-none"
               />
-              <button onClick={buscarVideos} disabled={buscando} className="bg-red-600 hover:bg-red-500 disabled:bg-gray-600 px-6 py-3 rounded-lg font-bold transition-colors">
+              <button 
+                onClick={buscarVideos} 
+                disabled={buscando}
+                className="bg-red-600 text-white px-6 rounded-xl font-bold text-xl disabled:bg-gray-400"
+              >
                 {buscando ? '⏳' : '🔍'}
               </button>
             </div>
 
-            {/* RESULTADOS EN MODO LISTA */}
+            {/* Resultados */}
             {videosBusqueda.length > 0 && (
-              <div className="border-t border-gray-700 pt-3">
-                <p className="text-gray-400 text-sm mb-2">Resultados ({videosBusqueda.length}) - Click para agregar:</p>
-                <div className="space-y-1 max-h-96 overflow-y-auto">
-                  {videosBusqueda.map((video, index) => (
-                    <div
-                      key={video.id.videoId}
-                      onClick={() => agregarACola(video)}
-                      className="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg cursor-pointer transition-colors flex items-center gap-3"
-                    >
-                      <span className="text-gray-500 font-bold w-6 text-center text-sm">{index + 1}</span>
-                      <img src={video.snippet.thumbnails.default.url} alt="" className="w-12 h-9 rounded object-cover flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{video.snippet.title}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          <span>{video.snippet.channelTitle}</span>
-                          <span>•</span>
-                          <span className="text-blue-400">{video.duracionFormateada}</span>
-                          <span>•</span>
-                          <span className="text-yellow-400">{bar?.precio_venta || 1} créditos</span>
-                        </div>
-                      </div>
-                      <Plus className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                {videosBusqueda.map((video) => (
+                  <button
+                    key={video.id.videoId}
+                    onClick={() => agregarACola(video)}
+                    className="w-full bg-gray-100 hover:bg-green-100 p-3 rounded-xl flex items-center gap-3 text-left transition-colors"
+                  >
+                    <img src={video.snippet.thumbnails.default.url} alt="" className="w-16 h-12 rounded object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{video.snippet.title}</p>
+                      <p className="text-sm text-gray-500">{video.snippet.channelTitle} • {video.duracionFormateada}</p>
                     </div>
-                  ))}
-                </div>
+                    <span className="bg-green-600 text-white px-3 py-1 rounded-lg font-bold">
+                      {creditosCliente > 0 ? '✓ 1' : '❌'}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
           {/* Cola de reproducción */}
-          <div className="bg-gray-800 rounded-xl p-4">
-            <h3 className="font-bold mb-3 text-lg">🎵 Cola General</h3>
+          <div className="bg-white rounded-2xl p-4 shadow-xl">
+            <h2 className="font-bold text-lg mb-3">🎵 Cola de Reproducción</h2>
             
             {cancionActual && (
-              <div className="bg-green-600 p-3 rounded-lg mb-3 flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-500 rounded flex items-center justify-center animate-pulse">
-                  <Play className="w-5 h-5 text-white" />
+              <div className="bg-green-100 border-2 border-green-500 p-3 rounded-xl mb-3 flex items-center gap-3">
+                <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
+                  <Play className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold truncate text-sm">{cancionActual.titulo}</p>
-                  <p className="text-xs opacity-80">▶️ Reproduciendo ahora</p>
+                  <p className="font-bold truncate">{cancionActual.titulo}</p>
+                  <p className="text-sm text-green-600">▶️ Reproduciendo ahora</p>
                 </div>
               </div>
             )}
 
-            <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
               {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold text-sm">{idx + 1}</span>
-                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs truncate">{cancion.titulo}</p>
-                    <p className="text-xs text-gray-400">{cancion.solicitado_por}</p>
-                  </div>
+                <div key={cancion.id} className="bg-gray-100 p-3 rounded-xl flex items-center gap-3">
+                  <span className="text-gray-400 font-bold text-lg w-8">{idx + 1}</span>
+                  <img src={cancion.thumbnail} alt="" className="w-12 h-12 rounded object-cover" />
+                  <p className="flex-1 truncate font-medium">{cancion.titulo}</p>
                 </div>
               ))}
               
               {cola.filter(c => c.estado === 'pendiente').length > 0 && (
-                <p className="text-yellow-400 text-xs py-1">⏳ Pendientes: {cola.filter(c => c.estado === 'pendiente').length}</p>
+                <div className="bg-yellow-100 p-2 rounded-lg text-center text-yellow-700">
+                  ⏳ {cola.filter(c => c.estado === 'pendiente').length} pendientes de aprobación
+                </div>
               )}
-
+              
               {cola.filter(c => c.estado !== 'reproduciendo').length === 0 && !cancionActual && (
-                <p className="text-gray-500 text-center py-2 text-sm">No hay videos en cola</p>
+                <p className="text-gray-400 text-center py-4">No hay canciones en cola</p>
               )}
             </div>
           </div>
@@ -846,40 +522,36 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO ADMIN - EXCLUSIVO PARA DUEÑOS DE BAR
+  // MODO ADMIN - DUEÑO DEL BAR
   // ================================================================
   if (modo === 'admin') {
     if (!isAuthed) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
             <Crown className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-center mb-2">👑 ADMIN BAR</h2>
-            <p className="text-center text-gray-500 mb-6">Solo para dueños del negocio</p>
+            <h2 className="text-2xl font-bold text-center mb-4">👑 Admin Bar</h2>
             <input
               type="password"
               value={claveInput}
               onChange={(e) => setClaveInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (
-                claveInput === CLAVE_ADMIN ? setIsAuthed(true) :
-                claveInput === CLAVE_SUPER_ADMIN ? (setIsAuthed(true), setModo('superadmin')) :
-                alert('❌ Clave incorrecta')
-              )}
-              placeholder="Ingresa tu clave"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (claveInput === CLAVE_ADMIN) setIsAuthed(true)
+                  else if (claveInput === CLAVE_SUPER_ADMIN) { setIsAuthed(true); setModo('superadmin') }
+                  else alert('❌ Clave incorrecta')
+                }
+              }}
+              placeholder="Clave de acceso"
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-yellow-500 focus:outline-none"
             />
             <button
               onClick={() => {
-                if (claveInput === CLAVE_ADMIN) {
-                  setIsAuthed(true)
-                } else if (claveInput === CLAVE_SUPER_ADMIN) {
-                  setIsAuthed(true)
-                  setModo('superadmin')
-                } else {
-                  alert('❌ Clave incorrecta')
-                }
+                if (claveInput === CLAVE_ADMIN) setIsAuthed(true)
+                else if (claveInput === CLAVE_SUPER_ADMIN) { setIsAuthed(true); setModo('superadmin') }
+                else alert('❌ Clave incorrecta')
               }}
-              className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 rounded-xl transition-colors"
+              className="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl text-xl"
             >
               ENTRAR
             </button>
@@ -889,83 +561,119 @@ export default function RockolaSaaS() {
     }
 
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
-        <ModalNombreCliente />
-        
-        <div className="bg-gradient-to-r from-yellow-600 to-yellow-700 p-4 sticky top-0 z-10">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Crown className="w-8 h-8" />
-              <div>
-                <h1 className="text-xl font-bold">👑 ADMIN - {bar?.nombre}</h1>
-                <p className="text-sm opacity-80">Panel de administración</p>
+      <div className="min-h-screen bg-gray-100">
+        {/* Modal vender créditos */}
+        {modalClienteAbierto && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
+              <h3 className="text-xl font-bold mb-4">💰 Vender {creditosAVender} créditos</h3>
+              <p className="text-gray-600 mb-2">Total: ₡{creditosAVender * PRECIO_VENTA}</p>
+              <input
+                type="text"
+                value={nombreClienteInput}
+                onChange={(e) => setNombreClienteInput(e.target.value)}
+                placeholder="Nombre del cliente"
+                className="w-full p-3 border-2 border-gray-200 rounded-xl mb-4 text-lg"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setModalClienteAbierto(false)} className="flex-1 bg-gray-200 py-3 rounded-xl font-bold">
+                  Cancelar
+                </button>
+                <button onClick={confirmarVentaCliente} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-bold">
+                  Confirmar
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {conectado && <Wifi className="w-4 h-4 text-green-300" />}
-              <button onClick={() => { setIsAuthed(false); setClaveInput('') }} className="bg-black/20 px-4 py-2 rounded-lg hover:bg-black/30">
-                Salir
-              </button>
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white">
+          <div className="max-w-2xl mx-auto flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-bold">👑 {bar?.nombre}</h1>
+              <p className="text-sm opacity-80">Panel de Administración</p>
             </div>
+            <button onClick={() => setIsAuthed(false)} className="bg-black/20 px-4 py-2 rounded-lg">
+              Salir
+            </button>
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto p-4 space-y-4">
-          {/* Resumen de créditos */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-xl p-3 border border-green-600">
-              <p className="text-green-300 text-xs">CRÉDITOS DISPONIBLES</p>
-              <p className="text-3xl font-bold text-white">{bar?.creditos_disponibles || 0}</p>
-            </div>
-            <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-3 border border-blue-600">
-              <p className="text-blue-300 text-xs">PRECIO COMPRA</p>
-              <p className="text-2xl font-bold text-white">${bar?.precio_compra || 0}</p>
-            </div>
-            <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-3 border border-yellow-600">
-              <p className="text-yellow-300 text-xs">PRECIO VENTA</p>
-              <p className="text-2xl font-bold text-white">${bar?.precio_venta || 0}</p>
+        <div className="max-w-2xl mx-auto p-4 space-y-4">
+          {/* Mi Bolsa de Créditos */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="text-lg font-bold text-gray-500 mb-2">Mi Bolsa de Créditos</h2>
+            <p className="text-6xl font-bold text-green-600">{bar?.creditos_disponibles || 0}</p>
+            <p className="text-gray-400">créditos disponibles</p>
+            <div className="mt-4 grid grid-cols-2 gap-4 text-center">
+              <div className="bg-blue-50 p-3 rounded-xl">
+                <p className="text-sm text-gray-500">Precio Compra</p>
+                <p className="text-2xl font-bold text-blue-600">₡{PRECIO_COMPRA}</p>
+              </div>
+              <div className="bg-green-50 p-3 rounded-xl">
+                <p className="text-sm text-gray-500">Precio Venta</p>
+                <p className="text-2xl font-bold text-green-600">₡{PRECIO_VENTA}</p>
+              </div>
             </div>
           </div>
 
-          {/* Vender créditos a clientes */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3 flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-green-400" />
-              💰 Vender Créditos a Clientes
-            </h3>
-            <p className="text-gray-400 text-sm mb-3">Cobra al cliente y dale sus créditos:</p>
-            <div className="flex gap-2 flex-wrap">
-              {[1, 3, 5, 10, 20, 50].map(cant => (
+          {/* Vender Créditos */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">💰 Vender Créditos a Clientes</h2>
+            <p className="text-gray-500 text-sm mb-4">Selecciona la cantidad y luego ingresa el nombre del cliente:</p>
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 3, 5, 10].map(cant => (
                 <button
                   key={cant}
-                  onClick={() => abrirModalCliente(cant)}
-                  disabled={!bar || cant > bar.creditos_disponibles}
-                  className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-lg font-bold transition-colors"
+                  onClick={() => {
+                    if ((bar?.creditos_disponibles || 0) >= cant) {
+                      setCreditosAVender(cant)
+                      setModalClienteAbierto(true)
+                    } else {
+                      alert('❌ No tienes suficientes créditos')
+                    }
+                  }}
+                  disabled={(bar?.creditos_disponibles || 0) < cant}
+                  className="bg-green-500 text-white py-4 rounded-xl font-bold text-lg disabled:bg-gray-300"
                 >
-                  {cant} cr. (${bar ? cant * bar.precio_venta : 0})
+                  {cant}
+                  <span className="block text-xs">₡{cant * PRECIO_VENTA}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Videos pendientes de aprobación */}
+          {/* Pendientes de aprobación */}
           {cola.filter(c => c.estado === 'pendiente').length > 0 && (
-            <div className="bg-yellow-900/30 rounded-xl p-4 border-2 border-yellow-500">
-              <h3 className="font-bold mb-3 text-yellow-400">⏳ Pendientes de Aprobación ({cola.filter(c => c.estado === 'pendiente').length})</h3>
+            <div className="bg-yellow-50 border-2 border-yellow-400 rounded-2xl p-4">
+              <h2 className="font-bold text-yellow-700 mb-3">⏳ Pendientes ({cola.filter(c => c.estado === 'pendiente').length})</h2>
               <div className="space-y-2">
-                {cola.filter(c => c.estado === 'pendiente').map((cancion) => (
-                  <div key={cancion.id} className="bg-gray-800 p-3 rounded-lg flex items-center gap-3">
-                    <img src={cancion.thumbnail} alt="" className="w-14 h-10 rounded" />
+                {cola.filter(c => c.estado === 'pendiente').map(cancion => (
+                  <div key={cancion.id} className="bg-white p-3 rounded-xl flex items-center gap-3">
+                    <img src={cancion.thumbnail} alt="" className="w-14 h-10 rounded object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{cancion.titulo}</p>
-                      <p className="text-sm text-gray-400">Por: <strong className="text-white">{cancion.solicitado_por}</strong></p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => aprobarCancion(cancion.id)} className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold flex items-center gap-1">
-                        <Check className="w-4 h-4" /> APROBAR
+                      <button 
+                        onClick={async () => {
+                          await actualizarEstadoCancion(cancion.id, 'aprobada')
+                          cargarDatos()
+                        }}
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold"
+                      >
+                        ✓
                       </button>
-                      <button onClick={() => rechazarCancion(cancion.id)} className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg font-bold flex items-center gap-1">
-                        <X className="w-4 h-4" /> RECHAZAR
+                      <button 
+                        onClick={async () => {
+                          await eliminarCancion(cancion.id)
+                          cargarDatos()
+                        }}
+                        className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold"
+                      >
+                        ✗
                       </button>
                     </div>
                   </div>
@@ -974,76 +682,52 @@ export default function RockolaSaaS() {
             </div>
           )}
 
-          {/* Cola de reproducción */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🎵 Cola de Reproducción</h3>
+          {/* Cola actual */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">🎵 Cola de Reproducción</h2>
             {cancionActual && (
-              <div className="bg-yellow-600 p-3 rounded-lg mb-3 flex items-center gap-3">
-                <div className="w-10 h-10 bg-yellow-500 rounded flex items-center justify-center">
-                  <Play className="w-5 h-5 text-black" />
-                </div>
-                <div className="flex-1">
+              <div className="bg-yellow-100 p-3 rounded-xl mb-3 flex items-center gap-3">
+                <span className="text-2xl">▶️</span>
+                <div className="flex-1 min-w-0">
                   <p className="font-bold truncate">{cancionActual.titulo}</p>
-                  <p className="text-sm opacity-80">▶️ Reproduciendo</p>
+                  <p className="text-sm text-yellow-600">Reproduciendo</p>
                 </div>
               </div>
             )}
-            <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="space-y-2 max-h-40 overflow-y-auto">
               {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold">{idx + 1}</span>
-                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
-                  <p className="text-sm truncate flex-1">{cancion.titulo}</p>
-                  <button onClick={() => eliminarDeCola(cancion.id)} className="text-red-400 hover:text-red-300 p-1">
+                <div key={cancion.id} className="bg-gray-100 p-2 rounded-lg flex items-center gap-2">
+                  <span className="text-gray-400 font-bold w-6">{idx + 1}</span>
+                  <img src={cancion.thumbnail} alt="" className="w-10 h-10 rounded" />
+                  <p className="flex-1 truncate text-sm">{cancion.titulo}</p>
+                  <button onClick={async () => { await eliminarCancion(cancion.id); cargarDatos() }} className="text-red-400 p-1">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
-              {cola.filter(c => c.estado === 'aprobada').length === 0 && !cancionActual && (
-                <p className="text-gray-500 text-center py-2">No hay videos en cola</p>
-              )}
             </div>
           </div>
 
-          {/* Control de reproducción */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🎮 Control de Reproducción</h3>
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={togglePause} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
-                {pausado ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                {pausado ? 'Reanudar' : 'Pausar'}
-              </button>
-              <button onClick={reproducirSiguiente} className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
-                <SkipForward className="w-4 h-4" /> Siguiente
-              </button>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              {volumen === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              <input type="range" min="0" max="100" value={volumen} onChange={(e) => cambiarVolumen(parseInt(e.target.value))} className="flex-1" />
-              <span className="w-10 text-right text-sm">{volumen}%</span>
-            </div>
-          </div>
-
-          {/* Links exclusivos */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🔗 Links Exclusivos</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
+          {/* Links */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">🔗 Links del Sistema</h2>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-gray-100 p-3 rounded-xl">
                 <div>
-                  <p className="font-medium text-sm">📺 TV</p>
-                  <p className="text-xs text-gray-400 truncate max-w-[150px]">{getUrlTV()}</p>
+                  <p className="font-bold">📺 TV</p>
+                  <p className="text-xs text-gray-500">{getUrlTV()}</p>
                 </div>
-                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
+                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-500">
+                  <Copy className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
+              <div className="flex items-center justify-between bg-gray-100 p-3 rounded-xl">
                 <div>
-                  <p className="font-medium text-sm">🍻 Clientes</p>
-                  <p className="text-xs text-gray-400 truncate max-w-[150px]">{getUrlCliente()}</p>
+                  <p className="font-bold">👤 Cliente</p>
+                  <p className="text-xs text-gray-500">{getUrlCliente()}</p>
                 </div>
-                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
+                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-500">
+                  <Copy className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -1054,27 +738,34 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO SUPER ADMIN - DUEÑO DEL SOFTWARE SAAS
+  // MODO SUPER ADMIN - DUEÑO DEL SAAS
   // ================================================================
   if (modo === 'superadmin') {
     if (!isAuthed) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-700 to-purple-900 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <Building className="w-16 h-16 text-purple-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-center mb-2">🏢 SUPER ADMIN</h2>
-            <p className="text-center text-gray-500 mb-6">Dueño del Software SaaS</p>
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 to-black flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <Crown className="w-16 h-16 text-purple-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-center mb-4">🔐 Super Admin</h2>
             <input
               type="password"
               value={claveInput}
               onChange={(e) => setClaveInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta'))}
-              placeholder="Ingresa tu clave"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (claveInput === CLAVE_SUPER_ADMIN) setIsAuthed(true)
+                  else alert('❌ Clave incorrecta')
+                }
+              }}
+              placeholder="Clave de Super Admin"
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none"
             />
             <button
-              onClick={() => claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta')}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl transition-colors"
+              onClick={() => {
+                if (claveInput === CLAVE_SUPER_ADMIN) setIsAuthed(true)
+                else alert('❌ Clave incorrecta')
+              }}
+              className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl text-xl"
             >
               ENTRAR
             </button>
@@ -1083,214 +774,133 @@ export default function RockolaSaaS() {
       )
     }
 
-    // Filtrar transacciones de ventas a bares
-    const ventasABares = todasTransacciones.filter(t => t.tipo === 'compra_software')
-    const totalVentas = ventasABares.reduce((acc, t) => acc + t.total, 0)
-
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
-        <div className="bg-gradient-to-r from-purple-700 to-purple-900 p-4 sticky top-0 z-10">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Building className="w-8 h-8" />
-              <div>
-                <h1 className="text-xl font-bold">🏢 SUPER ADMIN</h1>
-                <p className="text-sm opacity-80">Gestión de bares y ventas</p>
-              </div>
+      <div className="min-h-screen bg-gray-100">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-700 to-black p-4 text-white">
+          <div className="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-bold">👑 Super Admin - Dueño SaaS</h1>
+              <p className="text-sm opacity-80">Panel de Control</p>
             </div>
-            <div className="flex items-center gap-2">
-              {conectado && <Wifi className="w-4 h-4 text-green-300" />}
-              <button onClick={() => { setIsAuthed(false); setClaveInput('') }} className="bg-black/20 px-4 py-2 rounded-lg hover:bg-black/30">
+            <div className="flex gap-2">
+              <button onClick={exportarExcel} className="bg-green-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4" /> Excel
+              </button>
+              <button onClick={() => setIsAuthed(false)} className="bg-white/20 px-4 py-2 rounded-lg">
                 Salir
               </button>
             </div>
           </div>
         </div>
 
-        <div className="max-w-6xl mx-auto p-4 space-y-4">
-          {/* Resumen general */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-gradient-to-br from-purple-800 to-purple-900 rounded-xl p-3 border border-purple-600">
-              <p className="text-purple-300 text-xs">BARES ACTIVOS</p>
-              <p className="text-3xl font-bold text-white">{bares.length}</p>
+        <div className="max-w-4xl mx-auto p-4 space-y-4">
+          {/* Resumen */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+              <p className="text-gray-500 text-sm">Bares Activos</p>
+              <p className="text-4xl font-bold text-purple-600">{bares.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-xl p-3 border border-green-600">
-              <p className="text-green-300 text-xs">CRÉDITOS TOTALES</p>
-              <p className="text-3xl font-bold text-white">{bares.reduce((acc, b) => acc + (b.creditos_disponibles || 0), 0)}</p>
+            <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+              <p className="text-gray-500 text-sm">Total Créditos Vendidos</p>
+              <p className="text-4xl font-bold text-green-600">
+                {bares.reduce((sum, b) => sum + b.creditos_disponibles, 0)}
+              </p>
             </div>
-            <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-3 border border-blue-600">
-              <p className="text-blue-300 text-xs">PRECIO BASE</p>
-              <p className="text-2xl font-bold text-white">$5/cred</p>
-            </div>
-            <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-3 border border-yellow-600">
-              <p className="text-yellow-300 text-xs">TOTAL VENTAS</p>
-              <p className="text-3xl font-bold text-white">${totalVentas}</p>
+            <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+              <p className="text-gray-500 text-sm">Ventas Totales</p>
+              <p className="text-4xl font-bold text-blue-600">
+                ₡{todasTransacciones.filter(t => t.tipo === 'compra_software').reduce((sum, t) => sum + t.total, 0).toLocaleString()}
+              </p>
             </div>
           </div>
 
-          {/* CREAR NUEVO BAR */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">➕ Agregar Nuevo Bar</h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault()
-              const formData = new FormData(e.target as HTMLFormElement)
-              const nombre = formData.get('nombre') as string
-              if (nombre) {
-                try {
-                  await crearBar(nombre)
-                  await cargarDatos()
-                  alert('✅ Bar creado exitosamente')
-                } catch (error) {
-                  alert('❌ Error al crear bar')
-                }
-              }
-            }} className="flex gap-2">
-              <input 
-                name="nombre"
-                placeholder="Nombre del bar..."
-                className="flex-1 bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
-              <button type="submit" className="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded-lg font-bold">
-                Crear Bar
-              </button>
-            </form>
-          </div>
-
-          {/* LISTA DE BARES */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🏪 Lista de Bares</h3>
+          {/* Lista de Bares */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">🏪 Bares</h2>
             <div className="space-y-3">
-              {bares.map((barItem) => (
-                <div key={barItem.id} className="bg-gray-700 p-3 rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-bold">{barItem.nombre}</h4>
-                      <p className="text-xs text-gray-400">ID: {barItem.id.substring(0, 8)}...</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-green-400">{barItem.creditos_disponibles || 0} créditos</p>
-                      <p className="text-xs text-gray-400">Venta: ${barItem.precio_venta || 0}</p>
-                    </div>
+              {bares.map(b => (
+                <div key={b.id} className="bg-gray-50 p-4 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-lg">{b.nombre}</p>
+                    <p className="text-gray-500">Créditos: <span className="font-bold text-green-600">{b.creditos_disponibles}</span></p>
                   </div>
-                  
-                  {/* Vender créditos al bar */}
-                  <div className="border-t border-gray-600 pt-2 mt-2">
-                    <p className="text-xs text-gray-400 mb-2">Vender créditos:</p>
-                    <div className="flex gap-1 flex-wrap">
-                      {[10, 50, 100, 200].map(cant => (
-                        <button
-                          key={cant}
-                          onClick={async () => {
-                            try {
-                              await comprarCreditosProveedor(barItem.id, cant, 5)
-                              await cargarDatos()
-                            } catch (error) {
-                              alert('❌ Error')
-                            }
-                          }}
-                          className="bg-green-600 hover:bg-green-500 px-2 py-1 rounded text-xs font-bold"
-                        >
-                          +{cant} (${cant * 5})
-                        </button>
-                      ))}
-                    </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => comprarCreditos(b.id, 50)}
+                      className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold"
+                    >
+                      +50 (₡{50 * PRECIO_COMPRA})
+                    </button>
+                    <button 
+                      onClick={() => comprarCreditos(b.id, 100)}
+                      className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold"
+                    >
+                      +100 (₡{100 * PRECIO_COMPRA})
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* REPORTE DE VENTAS A BARES */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-400" />
-                📊 Reporte de Ventas a Bares
-              </h3>
-              <span className="text-green-400 font-bold">Total: ${totalVentas}</span>
-            </div>
-            
-            {ventasABares.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-600">
-                      <th className="text-left py-2 px-2">Fecha</th>
-                      <th className="text-left py-2 px-2">Bar</th>
-                      <th className="text-right py-2 px-2">Créditos</th>
-                      <th className="text-right py-2 px-2">Precio Unit.</th>
-                      <th className="text-right py-2 px-2">Total</th>
+          {/* Últimas transacciones */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">📊 Últimas Transacciones</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-2 text-left">Fecha</th>
+                    <th className="p-2 text-left">Bar</th>
+                    <th className="p-2 text-left">Tipo</th>
+                    <th className="p-2 text-right">Cantidad</th>
+                    <th className="p-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {todasTransacciones.slice(0, 20).map(t => (
+                    <tr key={t.id} className="border-b">
+                      <td className="p-2">{new Date(t.creado_en).toLocaleDateString()}</td>
+                      <td className="p-2">{bares.find(b => b.id === t.bar_id)?.nombre || '-'}</td>
+                      <td className="p-2">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          t.tipo === 'compra_software' ? 'bg-blue-100 text-blue-700' :
+                          t.tipo === 'venta_cliente' ? 'bg-green-100 text-green-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {t.tipo}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right">{t.cantidad}</td>
+                      <td className="p-2 text-right font-bold">₡{t.total.toLocaleString()}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {ventasABares.map((t) => {
-                      const barInfo = bares.find(b => b.id === t.bar_id)
-                      return (
-                        <tr key={t.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                          <td className="py-2 px-2">
-                            <div className="flex items-center gap-1 text-gray-400">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(t.creado_en).toLocaleDateString()}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {new Date(t.creado_en).toLocaleTimeString()}
-                            </div>
-                          </td>
-                          <td className="py-2 px-2 font-medium">{barInfo?.nombre || 'Bar'}</td>
-                          <td className="py-2 px-2 text-right">{t.cantidad}</td>
-                          <td className="py-2 px-2 text-right">${t.precio_unitario}</td>
-                          <td className="py-2 px-2 text-right text-green-400 font-bold">${t.total}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-center py-4">No hay ventas registradas</p>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Links exclusivos */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🔗 Links del Sistema</h3>
+          {/* Links */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <h2 className="font-bold text-lg mb-4">🔗 Links del Sistema</h2>
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">📺 TV</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlTV()}</p>
+              {[
+                { name: '📺 TV', url: getUrlTV() },
+                { name: '👤 Cliente', url: getUrlCliente() },
+                { name: '👑 Admin Bar', url: getUrlAdmin() },
+                { name: '🔐 Super Admin', url: getUrlSuperAdmin() }
+              ].map(link => (
+                <div key={link.name} className="flex items-center justify-between bg-gray-100 p-3 rounded-xl">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold">{link.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{link.url}</p>
+                  </div>
+                  <button onClick={() => copiarUrl(link.url)} className="text-blue-500 ml-2">
+                    <Copy className="w-5 h-5" />
+                  </button>
                 </div>
-                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">👑 Admin Bar</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlAdmin()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlAdmin())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">🍻 Clientes</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlCliente()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">🏢 Super Admin</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlSuperAdmin()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlSuperAdmin())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              ))}
             </div>
           </div>
         </div>
