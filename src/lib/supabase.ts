@@ -31,7 +31,8 @@ export const verificarConexion = async () => {
 export interface Bar {
   id: string
   nombre: string
-  creditos_disponibles: number
+  creditos_disponibles: number      // Stock del bar (lo que compró al SaaS)
+  creditos_pantalla: number          // Pool público para clientes
   precio_compra: number
   precio_venta: number
   activo: boolean
@@ -64,7 +65,7 @@ export interface CancionCola {
 export interface Transaccion {
   id: string
   bar_id: string
-  tipo: 'compra_software' | 'venta_cliente' | 'consumo'
+  tipo: 'compra_software' | 'venta_cliente' | 'consumo' | 'acreditacion'
   cantidad: number
   precio_unitario: number
   total: number
@@ -83,7 +84,7 @@ export interface Cliente {
   activo: boolean
 }
 
-// Funciones de la API
+// ============= FUNCIONES API =============
 
 // Obtener datos del bar
 export async function obtenerBar(barId: string) {
@@ -105,7 +106,11 @@ export async function obtenerBar(barId: string) {
   }
   
   console.log('✅ Bar obtenido:', data?.nombre)
-  return data as Bar
+  // Asegurar que creditos_pantalla existe
+  return { 
+    ...data, 
+    creditos_pantalla: data.creditos_pantalla ?? 0 
+  } as Bar
 }
 
 // Obtener instancia rockola
@@ -145,7 +150,59 @@ export async function obtenerCola(barId: string) {
   return data as CancionCola[]
 }
 
-// Agregar canción a la cola
+// Agregar canción a la cola Y DESCONTAR CRÉDITO
+export async function agregarCancionYConsumir(barId: string, cancion: Omit<CancionCola, 'id' | 'creado_en' | 'bar_id'>) {
+  if (!supabase) throw new Error('Supabase no inicializado')
+  
+  // Obtener estado actual del bar
+  const { data: bar, error: barError } = await supabase
+    .from('bares')
+    .select('creditos_pantalla')
+    .eq('id', barId)
+    .single()
+  
+  if (barError) throw barError
+  if (!bar || bar.creditos_pantalla < 1) {
+    throw new Error('No hay créditos disponibles en la pantalla')
+  }
+  
+  // Agregar canción
+  const { data: nuevaCancion, error: cancionError } = await supabase
+    .from('canciones_cola')
+    .insert([{
+      bar_id: barId,
+      ...cancion
+    }])
+    .select()
+    .single()
+  
+  if (cancionError) throw cancionError
+  
+  // Descontar crédito de la pantalla
+  const { error: updateError } = await supabase
+    .from('bares')
+    .update({ creditos_pantalla: bar.creditos_pantalla - 1 })
+    .eq('id', barId)
+  
+  if (updateError) throw updateError
+  
+  // Registrar transacción de consumo
+  await supabase
+    .from('transacciones')
+    .insert([{
+      bar_id: barId,
+      tipo: 'consumo',
+      cantidad: 1,
+      precio_unitario: 0,
+      total: 0,
+      cancion_titulo: cancion.titulo,
+      descripcion: `Consumo: ${cancion.titulo}`
+    }])
+  
+  return nuevaCancion as CancionCola
+}
+
+// Agregar canción simple (sin consumir)
 export async function agregarCancion(cancion: Omit<CancionCola, 'id' | 'creado_en'>) {
   const { data, error } = await supabase
     .from('canciones_cola')
@@ -177,7 +234,90 @@ export async function eliminarCancion(cancionId: string) {
   if (error) throw error
 }
 
-// Transferir créditos del SaaS a la pantalla
+// ============= NUEVA LÓGICA DE CRÉDITOS =============
+
+// Super Admin: Comprar créditos para el bar (stock)
+export async function comprarCreditosProveedor(barId: string, cantidad: number, precioUnitario: number) {
+  const total = cantidad * precioUnitario
+  
+  // Crear transacción
+  await supabase
+    .from('transacciones')
+    .insert([{
+      bar_id: barId,
+      tipo: 'compra_software',
+      cantidad,
+      precio_unitario: precioUnitario,
+      total,
+      descripcion: `Compra de ${cantidad} créditos al proveedor`
+    }])
+  
+  // Sumar al stock del bar (creditos_disponibles)
+  const { data: bar } = await supabase
+    .from('bares')
+    .select('creditos_disponibles')
+    .eq('id', barId)
+    .single()
+  
+  if (bar) {
+    await supabase
+      .from('bares')
+      .update({ creditos_disponibles: bar.creditos_disponibles + cantidad })
+      .eq('id', barId)
+  }
+  
+  return { cantidad, precioUnitario, total }
+}
+
+// Admin Bar: Acreditar créditos a la pantalla pública
+export async function acreditarCreditosPantalla(barId: string, cantidad: number) {
+  if (!supabase) throw new Error('Supabase no inicializado')
+  
+  // Obtener estado actual
+  const { data: bar, error: barError } = await supabase
+    .from('bares')
+    .select('creditos_disponibles, creditos_pantalla, precio_venta')
+    .eq('id', barId)
+    .single()
+  
+  if (barError) throw barError
+  if (!bar) throw new Error('Bar no encontrado')
+  if (bar.creditos_disponibles < cantidad) throw new Error('Stock insuficiente')
+  
+  // Transferir de stock a pantalla
+  const nuevoStock = bar.creditos_disponibles - cantidad
+  const nuevoPantalla = (bar.creditos_pantalla || 0) + cantidad
+  
+  await supabase
+    .from('bares')
+    .update({ 
+      creditos_disponibles: nuevoStock,
+      creditos_pantalla: nuevoPantalla
+    })
+    .eq('id', barId)
+  
+  // Registrar transacción
+  await supabase
+    .from('transacciones')
+    .insert([{
+      bar_id: barId,
+      tipo: 'acreditacion',
+      cantidad,
+      precio_unitario: bar.precio_venta,
+      total: cantidad * bar.precio_venta,
+      descripcion: `Acreditación de ${cantidad} créditos a pantalla`
+    }])
+  
+  return { cantidad, nuevoStock, nuevoPantalla }
+}
+
+// Función antigua mantenida para compatibilidad
+export async function venderCreditosCliente(barId: string, clienteNombre: string, cantidad: number) {
+  // Usar la nueva lógica: acreditar a pantalla
+  return acreditarCreditosPantalla(barId, cantidad)
+}
+
+// Transferir créditos del SaaS a la pantalla (endpoint alternativo)
 export async function transferirCreditos(barId: string, cantidad: number, clave: string) {
   const response = await fetch('/api/rockola/transferir', {
     method: 'POST',
@@ -191,43 +331,6 @@ export async function transferirCreditos(barId: string, cantidad: number, clave:
   }
   
   return response.json()
-}
-
-// Vender créditos a cliente
-export async function venderCreditosCliente(barId: string, clienteNombre: string, cantidad: number) {
-  // Crear transacción
-  const { data: bar } = await supabase
-    .from('bares')
-    .select('precio_venta, creditos_disponibles')
-    .eq('id', barId)
-    .single()
-  
-  if (!bar) throw new Error('Bar no encontrado')
-  if (bar.creditos_disponibles < cantidad) throw new Error('Créditos insuficientes')
-  
-  const precioUnitario = bar.precio_venta
-  const total = cantidad * precioUnitario
-  
-  // Crear transacción
-  await supabase
-    .from('transacciones')
-    .insert([{
-      bar_id: barId,
-      tipo: 'venta_cliente',
-      cantidad,
-      precio_unitario: precioUnitario,
-      total,
-      cliente_nombre: clienteNombre,
-      descripcion: `Venta de ${cantidad} créditos a ${clienteNombre}`
-    }])
-  
-  // Actualizar créditos del bar
-  await supabase
-    .from('bares')
-    .update({ creditos_disponibles: bar.creditos_disponibles - cantidad })
-    .eq('id', barId)
-  
-  return { cantidad, precioUnitario, total }
 }
 
 // Obtener transacciones
@@ -261,39 +364,6 @@ export async function obtenerTransacciones(barId: string, filtros?: {
   return data as Transaccion[]
 }
 
-// Comprar créditos del proveedor (Super Admin)
-export async function comprarCreditosProveedor(barId: string, cantidad: number, precioUnitario: number) {
-  const total = cantidad * precioUnitario
-  
-  // Crear transacción
-  await supabase
-    .from('transacciones')
-    .insert([{
-      bar_id: barId,
-      tipo: 'compra_software',
-      cantidad,
-      precio_unitario: precioUnitario,
-      total,
-      descripcion: `Compra de ${cantidad} créditos al proveedor`
-    }])
-  
-  // Actualizar créditos del bar
-  const { data: bar } = await supabase
-    .from('bares')
-    .select('creditos_disponibles')
-    .eq('id', barId)
-    .single()
-  
-  if (bar) {
-    await supabase
-      .from('bares')
-      .update({ creditos_disponibles: bar.creditos_disponibles + cantidad })
-      .eq('id', barId)
-  }
-  
-  return { cantidad, precioUnitario, total }
-}
-
 // Actualizar precios del bar
 export async function actualizarPrecios(barId: string, precioCompra: number, precioVenta: number) {
   const { error } = await supabase
@@ -323,7 +393,8 @@ export async function obtenerTodosLosBares() {
   }
   
   console.log('✅ Bares obtenidos:', data?.length)
-  return data as Bar[]
+  // Asegurar creditos_pantalla en todos
+  return data?.map(b => ({ ...b, creditos_pantalla: b.creditos_pantalla ?? 0 })) as Bar[]
 }
 
 // Crear nuevo bar (Super Admin)
@@ -333,8 +404,9 @@ export async function crearBar(nombre: string) {
     .insert([{
       nombre,
       creditos_disponibles: 0,
-      precio_compra: 3,
-      precio_venta: 5,
+      creditos_pantalla: 0,
+      precio_compra: 40,
+      precio_venta: 100,
       activo: true
     }])
     .select()
@@ -382,7 +454,10 @@ export function suscribirseACambios(barId: string, callbacks: {
       filter: `id=eq.${barId}`
     }, (payload) => {
       if (payload.new) {
-        callbacks.onBarCambio!(payload.new as Bar)
+        callbacks.onBarCambio!({ 
+          ...payload.new as Bar,
+          creditos_pantalla: (payload.new as any).creditos_pantalla ?? 0 
+        })
       }
     })
   }

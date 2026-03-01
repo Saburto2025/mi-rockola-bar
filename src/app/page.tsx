@@ -6,9 +6,15 @@ import {
   Play, Pause, SkipForward, Volume2, VolumeX,
   Users, Music, Search, Trash2, Check, X, Crown,
   DollarSign, BarChart3, Loader2, Wifi, WifiOff, ShoppingCart,
-  Plus, LogOut, Copy, TrendingUp, FileSpreadsheet
+  Plus, LogOut, Copy, TrendingUp, FileSpreadsheet, Store
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { 
+  supabase, obtenerBar, obtenerCola, actualizarEstadoCancion, eliminarCancion, 
+  obtenerTransacciones, comprarCreditosProveedor, acreditarCreditosPantalla,
+  suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones,
+  agregarCancionYConsumir,
+  type Bar, type CancionCola, type Transaccion 
+} from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +22,6 @@ export const dynamic = 'force-dynamic'
 const CLAVE_ADMIN = "1234"
 const CLAVE_SUPER_ADMIN = "rockola2024"
 const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
-const DEFAULT_BAR_ID = "7b2fc122-93fa-4311-aaf9-184f0c111de1"
 
 // Precios fijos
 const PRECIO_COMPRA = 40   // Colones - lo que paga el bar al dueño del SaaS
@@ -33,8 +38,9 @@ interface VideoBusqueda {
 }
 
 export default function RockolaSaaS() {
-  // ============= MODO =============
-  const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin'>('tv')
+  // ============= MODO Y BAR =============
+  const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin' | 'seleccion'>('tv')
+  const [barId, setBarId] = useState<string>('')
   
   // ============= ESTADOS =============
   const [bar, setBar] = useState<Bar | null>(null)
@@ -48,7 +54,6 @@ export default function RockolaSaaS() {
   const [error, setError] = useState<string | null>(null)
   
   // ============= CLIENTE =============
-  const [creditosCliente, setCreditosCliente] = useState(0)
   const [busqueda, setBusqueda] = useState('')
   const [videosBusqueda, setVideosBusqueda] = useState<VideoBusqueda[]>([])
   const [buscando, setBuscando] = useState(false)
@@ -58,28 +63,49 @@ export default function RockolaSaaS() {
   const [isAuthed, setIsAuthed] = useState(false)
   const [transacciones, setTransacciones] = useState<Transaccion[]>([])
   const [todasTransacciones, setTodasTransacciones] = useState<Transaccion[]>([])
-  const [nombreClienteInput, setNombreClienteInput] = useState('')
-  const [creditosAVender, setCreditosAVender] = useState(0)
-  const [modalClienteAbierto, setModalClienteAbierto] = useState(false)
+  const [creditosAAcreditar, setCreditosAAcreditar] = useState(0)
+  const [modalAcreditacionAbierto, setModalAcreditacionAbierto] = useState(false)
   
   // ============= PLAYER =============
   const [player, setPlayer] = useState<any>(null)
   const playerRef = useRef<any>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const [currentUrl, setCurrentUrl] = useState('')
+  const [iniciado, setIniciado] = useState(false) // Para el botón de inicio
 
-  // ============= DETECTAR MODO =============
+  // ============= DETECTAR MODO Y BAR =============
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const modoUrl = params.get('modo')
+    const barUrl = params.get('bar')
     
+    // Establecer modo
     if (modoUrl === 'cliente') setModo('cliente')
     else if (modoUrl === 'admin') setModo('admin')
     else if (modoUrl === 'superadmin') setModo('superadmin')
     else setModo('tv')
-
+    
+    // Establecer bar ID
+    if (barUrl) {
+      setBarId(barUrl)
+    }
+    
     setCurrentUrl(window.location.origin)
   }, [])
+
+  // ============= CARGAR BARES PARA SELECCIÓN =============
+  useEffect(() => {
+    if (modo === 'superadmin' || !barId) {
+      // Cargar lista de bares
+      obtenerTodosLosBares().then(baresData => {
+        setBares(baresData)
+        // Si no hay barId y no es superadmin, usar el primero
+        if (!barId && modo !== 'superadmin' && baresData.length > 0) {
+          setBarId(baresData[0].id)
+        }
+      }).catch(console.error)
+    }
+  }, [modo, barId])
 
   // ============= CARGAR DATOS =============
   const cargarDatos = useCallback(async () => {
@@ -100,16 +126,21 @@ export default function RockolaSaaS() {
         return
       }
 
-      const barData = await obtenerBar(DEFAULT_BAR_ID)
+      if (!barId) {
+        setCargando(false)
+        return
+      }
+
+      const barData = await obtenerBar(barId)
       setBar(barData)
 
-      const colaData = await obtenerCola(DEFAULT_BAR_ID)
+      const colaData = await obtenerCola(barId)
       setCola(colaData)
 
       const actual = colaData.find(c => c.estado === 'reproduciendo')
       setCancionActual(actual || null)
 
-      const transData = await obtenerTransacciones(DEFAULT_BAR_ID)
+      const transData = await obtenerTransacciones(barId)
       setTransacciones(transData)
 
       setConectado(true)
@@ -120,7 +151,7 @@ export default function RockolaSaaS() {
     } finally {
       setCargando(false)
     }
-  }, [modo])
+  }, [modo, barId])
 
   // ============= SUSCRIPCIÓN =============
   useEffect(() => {
@@ -129,9 +160,11 @@ export default function RockolaSaaS() {
       return
     }
     
+    if (!barId) return
+    
     cargarDatos()
 
-    unsubscribeRef.current = suscribirseACambios(DEFAULT_BAR_ID, {
+    unsubscribeRef.current = suscribirseACambios(barId, {
       onBarCambio: (nuevoBar) => setBar(nuevoBar),
       onColaCambio: (nuevaCola) => {
         setCola(nuevaCola)
@@ -139,14 +172,14 @@ export default function RockolaSaaS() {
         setCancionActual(actual || null)
       },
       onTransaccionCambio: () => {
-        obtenerTransacciones(DEFAULT_BAR_ID).then(setTransacciones)
+        obtenerTransacciones(barId).then(setTransacciones)
       }
     })
 
     return () => {
       if (unsubscribeRef.current) unsubscribeRef.current()
     }
-  }, [modo, cargarDatos])
+  }, [modo, barId, cargarDatos])
 
   // ============= BUSCAR VIDEOS =============
   const buscarVideos = async () => {
@@ -188,36 +221,36 @@ export default function RockolaSaaS() {
     setBuscando(false)
   }
 
-  // ============= AGREGAR A COLA =============
+  // ============= AGREGAR A COLA (CONSUME CRÉDITO) =============
   const agregarACola = async (video: VideoBusqueda) => {
-    if (!bar) return
+    if (!bar || !barId) return
     
-    if (creditosCliente < 1) {
-      alert('❌ No tienes créditos. Pide al administrador que te recargue.')
+    if ((bar.creditos_pantalla || 0) < 1) {
+      alert('❌ No hay créditos en la pantalla. Pide al administrador que recargue.')
       return
     }
 
     try {
-      await agregarCancion({
-        bar_id: bar.id,
+      await agregarCancionYConsumir(barId, {
         video_id: video.id.videoId,
         titulo: video.snippet.title,
         thumbnail: video.snippet.thumbnails.default.url,
         canal: video.snippet.channelTitle,
         estado: 'pendiente',
-        costo_creditos: PRECIO_VENTA,
-        precio_venta: PRECIO_VENTA,
+        costo_creditos: 1,
         solicitado_por: 'Cliente',
         posicion: cola.length
       })
 
-      setCreditosCliente(prev => prev - 1)
+      // Actualizar estado local
+      setBar(prev => prev ? { ...prev, creditos_pantalla: prev.creditos_pantalla - 1 } : null)
+      
       setBusqueda('')
       setVideosBusqueda([])
       alert(`✅ "${video.snippet.title}" agregado a la cola`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error)
-      alert('❌ Error al agregar')
+      alert(error.message || '❌ Error al agregar')
     }
   }
 
@@ -245,48 +278,37 @@ export default function RockolaSaaS() {
     playerRef.current = event.target
     setPlayer(event.target)
     event.target.setVolume(volumen)
-  }
-
-  const togglePause = () => {
-    if (player) {
-      if (pausado) player.playVideo()
-      else player.pauseVideo()
-      setPausado(!pausado)
-    }
+    event.target.playVideo() // Forzar reproducción
+    setIniciado(true)
   }
 
   // ============= REPRODUCIR SIGUIENTE AUTO =============
   useEffect(() => {
-    if (modo === 'tv' && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
+    if (modo === 'tv' && iniciado && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
       reproducirSiguiente()
     }
-  }, [modo, cancionActual, cola, reproducirSiguiente])
+  }, [modo, iniciado, cancionActual, cola, reproducirSiguiente])
 
-  // ============= ADMIN: VENDER CRÉDITOS =============
-  const confirmarVentaCliente = async () => {
-    if (!nombreClienteInput.trim()) {
-      alert('Ingresa el nombre del cliente')
-      return
-    }
-    if (!bar) return
+  // ============= ADMIN: ACREDITAR CRÉDITOS =============
+  const confirmarAcreditacion = async () => {
+    if (!barId) return
     
     try {
-      await venderCreditosCliente(bar.id, nombreClienteInput.trim(), creditosAVender)
+      await acreditarCreditosPantalla(barId, creditosAAcreditar)
       await cargarDatos()
-      setModalClienteAbierto(false)
-      setNombreClienteInput('')
-      alert(`✅ ${creditosAVender} créditos vendidos a ${nombreClienteInput} = ₡${creditosAVender * PRECIO_VENTA}`)
+      setModalAcreditacionAbierto(false)
+      alert(`✅ ${creditosAAcreditar} créditos acreditados a la pantalla`)
     } catch (error: any) {
-      alert(error.message || 'Error al vender')
+      alert(error.message || 'Error al acreditar')
     }
   }
 
   // ============= SUPER ADMIN: COMPRAR CRÉDITOS =============
-  const comprarCreditos = async (barId: string, cantidad: number) => {
+  const comprarCreditos = async (targetBarId: string, cantidad: number) => {
     try {
-      await comprarCreditosProveedor(barId, cantidad, PRECIO_COMPRA)
+      await comprarCreditosProveedor(targetBarId, cantidad, PRECIO_COMPRA)
       await cargarDatos()
-      alert(`✅ ${cantidad} créditos agregados = ₡${cantidad * PRECIO_COMPRA}`)
+      alert(`✅ ${cantidad} créditos agregados al stock = ₡${cantidad * PRECIO_COMPRA}`)
     } catch (error) {
       alert('Error al comprar créditos')
     }
@@ -301,7 +323,7 @@ export default function RockolaSaaS() {
       Cantidad: t.cantidad,
       'Precio Unitario': t.precio_unitario,
       Total: t.total,
-      Cliente: t.cliente_nombre || '-'
+      Descripcion: t.descripcion || '-'
     }))
     
     const csv = [
@@ -317,11 +339,12 @@ export default function RockolaSaaS() {
     a.click()
   }
 
-  // ============= URLS =============
-  const getUrlCliente = () => `${currentUrl}?modo=cliente`
-  const getUrlAdmin = () => `${currentUrl}?modo=admin`
+  // ============= URLS CON BAR ID =============
+  const getUrlBase = () => `${currentUrl}?bar=${barId}`
+  const getUrlCliente = () => `${currentUrl}?bar=${barId}&modo=cliente`
+  const getUrlAdmin = () => `${currentUrl}?bar=${barId}&modo=admin`
   const getUrlSuperAdmin = () => `${currentUrl}?modo=superadmin`
-  const getUrlTV = () => currentUrl
+  const getUrlTV = () => getUrlBase()
 
   const copiarUrl = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -357,7 +380,7 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO TV - SOLO VIDEO SIN BOTONES
+  // MODO TV - PANTALLA PRINCIPAL
   // ================================================================
   if (modo === 'tv') {
     if (error) {
@@ -370,6 +393,55 @@ export default function RockolaSaaS() {
             <button onClick={() => cargarDatos()} className="bg-purple-600 text-white py-3 px-8 rounded-xl font-bold">
               Reintentar
             </button>
+          </div>
+        </div>
+      )
+    }
+    
+    // Pantalla de inicio para activar autoplay
+    if (!iniciado) {
+      return (
+        <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-purple-900 to-black flex flex-col items-center justify-center p-8">
+          <div className="relative mb-8">
+            <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 animate-pulse"></div>
+            <Music className="w-40 h-40 text-purple-400 relative z-10 animate-pulse" />
+          </div>
+          
+          <h1 className="text-7xl font-black text-white mb-4 tracking-wider">🎵 ROCKOLA</h1>
+          <p className="text-purple-300 text-3xl font-bold mb-12">{bar?.nombre || 'Cargando...'}</p>
+          
+          <button
+            onClick={() => {
+              if (cancionActual) {
+                setIniciado(true)
+              } else if (cola.filter(c => c.estado === 'aprobada').length > 0) {
+                reproducirSiguiente()
+              } else {
+                setIniciado(true)
+              }
+            }}
+            className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white px-16 py-6 rounded-2xl text-3xl font-bold shadow-2xl transition-all hover:scale-105 active:scale-95"
+          >
+            ▶️ INICIAR ROCKOLA
+          </button>
+          
+          <div className="mt-8 bg-white/10 backdrop-blur-sm rounded-2xl p-4 max-w-md w-full">
+            <p className="text-purple-300 text-center text-sm mb-2">Estado actual:</p>
+            <div className="flex justify-center gap-8 text-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold">{cola.filter(c => c.estado === 'aprobada').length}</p>
+                <p className="text-xs text-purple-300">En cola</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">{bar?.creditos_pantalla || 0}</p>
+                <p className="text-xs text-purple-300">Créditos</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-4 max-w-lg shadow-2xl">
+            <h2 className="text-2xl font-black text-white mb-1">🎵 MERKA 4.0</h2>
+            <p className="text-white/90">Tu software SaaS para tu negocio directamente desde YouTube</p>
           </div>
         </div>
       )
@@ -400,15 +472,13 @@ export default function RockolaSaaS() {
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-gray-900 via-purple-900 to-black">
-            {/* Logo animado */}
             <div className="relative mb-8">
               <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 animate-pulse"></div>
               <Music className="w-40 h-40 text-purple-400 relative z-10 animate-pulse" />
             </div>
             
-            {/* Título */}
             <h1 className="text-7xl font-black text-white mb-4 tracking-wider">🎵 ROCKOLA</h1>
-            <p className="text-purple-300 text-3xl font-bold mb-8">{bar?.nombre || 'Cargando...'}</p>
+            <p className="text-purple-300 text-3xl font-bold mb-8">{bar?.nombre || 'Esperando...'}</p>
             
             {/* Cola visible */}
             {cola.filter(c => c.estado === 'aprobada').length > 0 && (
@@ -425,7 +495,6 @@ export default function RockolaSaaS() {
               </div>
             )}
             
-            {/* Mensaje promocional MERKA 4.0 */}
             <div className="mt-8 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-6 max-w-lg shadow-2xl">
               <h2 className="text-4xl font-black text-white mb-2">🎵 MERKA 4.0</h2>
               <p className="text-white text-xl font-medium">
@@ -439,7 +508,7 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO CLIENTE - PANTALLA COMPARTIDA SIN REGISTRO
+  // MODO CLIENTE - PANTALLA PÚBLICA CON CRÉDITOS
   // ================================================================
   if (modo === 'cliente') {
     return (
@@ -452,24 +521,41 @@ export default function RockolaSaaS() {
             <p className="text-gray-500 mt-2">Pide tu música o video favorito</p>
           </div>
 
-          {/* Créditos disponibles - visible para todos */}
+          {/* CRÉDITOS PÚBLICOS - Pool visible para todos */}
           <div className="bg-gradient-to-r from-yellow-400 to-orange-400 rounded-2xl p-6 mb-4 shadow-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white text-lg font-medium">Créditos Disponibles</p>
-                <p className="text-white/80 text-sm">El administrador te recarga aquí</p>
+                <p className="text-white text-lg font-medium">💰 Créditos Disponibles</p>
+                <p className="text-white/80 text-sm">Pool público para todos</p>
               </div>
               <div className="bg-white rounded-xl px-8 py-4">
-                <p className="text-5xl font-bold text-green-600">{bar?.creditos_disponibles || 0}</p>
+                <p className="text-5xl font-bold text-green-600">{bar?.creditos_pantalla || 0}</p>
               </div>
             </div>
           </div>
 
+          {/* Historial reciente de transacciones */}
+          {transacciones.filter(t => t.tipo === 'acreditacion' || t.tipo === 'consumo').length > 0 && (
+            <div className="bg-white/90 rounded-2xl p-4 mb-4 shadow-xl">
+              <h3 className="font-bold text-sm text-gray-600 mb-2">📋 Últimos movimientos:</h3>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {transacciones.filter(t => t.tipo === 'acreditacion' || t.tipo === 'consumo').slice(0, 5).map(t => (
+                  <div key={t.id} className="flex justify-between text-sm">
+                    <span className={t.tipo === 'acreditacion' ? 'text-green-600' : 'text-red-600'}>
+                      {t.tipo === 'acreditacion' ? '➕' : '➖'} {t.descripcion}
+                    </span>
+                    <span className="font-bold">{t.tipo === 'acreditacion' ? `+${t.cantidad}` : `-${t.cantidad}`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Mensaje si no hay créditos */}
-          {(!bar?.creditos_disponibles || bar.creditos_disponibles === 0) && (
+          {(!bar?.creditos_pantalla || bar.creditos_pantalla === 0) && (
             <div className="bg-yellow-100 border-2 border-yellow-400 rounded-2xl p-4 mb-4">
               <p className="text-yellow-700 text-center font-medium">
-                💡 Sin créditos disponibles. Solicita al administrador que te recargue.
+                💡 Sin créditos disponibles. Solicita al administrador que recargue la pantalla.
               </p>
             </div>
           )}
@@ -502,9 +588,9 @@ export default function RockolaSaaS() {
                   <button
                     key={video.id.videoId}
                     onClick={() => agregarACola(video)}
-                    disabled={!bar?.creditos_disponibles || bar.creditos_disponibles < 1}
+                    disabled={!bar?.creditos_pantalla || bar.creditos_pantalla < 1}
                     className={`w-full p-3 rounded-xl flex items-center gap-3 text-left transition-all ${
-                      (bar?.creditos_disponibles || 0) >= 1 
+                      (bar?.creditos_pantalla || 0) >= 1 
                         ? 'bg-gray-100 hover:bg-green-100 active:scale-[0.98]' 
                         : 'bg-gray-100 opacity-50 cursor-not-allowed'
                     }`}
@@ -515,11 +601,11 @@ export default function RockolaSaaS() {
                       <p className="text-sm text-gray-500">{video.snippet.channelTitle} • {video.duracionFormateada}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-lg font-bold ${
-                      (bar?.creditos_disponibles || 0) >= 1 
+                      (bar?.creditos_pantalla || 0) >= 1 
                         ? 'bg-green-600 text-white' 
                         : 'bg-gray-300 text-gray-500'
                     }`}>
-                      {(bar?.creditos_disponibles || 0) >= 1 ? '✓ 1' : '❌'}
+                      {(bar?.creditos_pantalla || 0) >= 1 ? '✓ 1' : '❌'}
                     </span>
                   </button>
                 ))}
@@ -661,32 +747,27 @@ export default function RockolaSaaS() {
 
     return (
       <div className="min-h-screen bg-gray-100">
-        {/* Modal vender créditos */}
-        {modalClienteAbierto && (
+        {/* Modal acreditar créditos */}
+        {modalAcreditacionAbierto && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
-              <h3 className="text-xl font-bold mb-2">💰 Vender {creditosAVender} créditos</h3>
-              <p className="text-gray-600 mb-4">Total a cobrar: <span className="font-bold text-green-600">₡{creditosAVender * PRECIO_VENTA}</span></p>
-              <input
-                type="text"
-                value={nombreClienteInput}
-                onChange={(e) => setNombreClienteInput(e.target.value)}
-                placeholder="Nombre del cliente"
-                className="w-full p-3 border-2 border-gray-200 rounded-xl mb-4 text-lg focus:border-green-500 focus:outline-none"
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && confirmarVentaCliente()}
-              />
+              <h3 className="text-xl font-bold mb-2">💰 Acreditar {creditosAAcreditar} créditos</h3>
+              <p className="text-gray-600 mb-4">
+                Stock actual: <span className="font-bold">{bar?.creditos_disponibles || 0}</span>
+              </p>
+              <p className="text-gray-600 mb-4">
+                Cobrar al cliente: <span className="font-bold text-green-600">₡{creditosAAcreditar * PRECIO_VENTA}</span>
+              </p>
               <div className="flex gap-2">
                 <button 
-                  onClick={() => { setModalClienteAbierto(false); setNombreClienteInput('') }} 
+                  onClick={() => setModalAcreditacionAbierto(false)} 
                   className="flex-1 bg-gray-200 hover:bg-gray-300 py-3 rounded-xl font-bold transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
-                  onClick={confirmarVentaCliente} 
-                  disabled={!nombreClienteInput.trim()}
-                  className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white py-3 rounded-xl font-bold transition-colors"
+                  onClick={confirmarAcreditacion} 
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl font-bold transition-colors"
                 >
                   Confirmar
                 </button>
@@ -712,28 +793,36 @@ export default function RockolaSaaS() {
         </div>
 
         <div className="max-w-2xl mx-auto p-4 space-y-4">
-          {/* Mi Bolsa de Créditos */}
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="text-lg font-bold text-gray-500 mb-2">Mi Bolsa de Créditos</h2>
-            <p className="text-6xl font-bold text-green-600">{bar?.creditos_disponibles || 0}</p>
-            <p className="text-gray-400">créditos disponibles</p>
+          {/* Stock vs Pantalla */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+              <p className="text-gray-500 text-sm mb-1">📦 Mi Stock</p>
+              <p className="text-5xl font-bold text-blue-600">{bar?.creditos_disponibles || 0}</p>
+              <p className="text-gray-400 text-xs">créditos comprados</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+              <p className="text-gray-500 text-sm mb-1">💰 En Pantalla</p>
+              <p className="text-5xl font-bold text-green-600">{bar?.creditos_pantalla || 0}</p>
+              <p className="text-gray-400 text-xs">créditos públicos</p>
+            </div>
           </div>
 
-          {/* Vender Créditos - SOLO 1, 5, 10, 20 */}
+          {/* Acreditar Créditos a Pantalla */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-2">💰 Vender Créditos a Clientes</h2>
-            <p className="text-gray-500 text-sm mb-4">Precio: ₡{PRECIO_VENTA} por crédito</p>
+            <h2 className="font-bold text-lg mb-2">💳 Acreditar Créditos a Pantalla</h2>
+            <p className="text-gray-500 text-sm mb-4">
+              Cobra ₡{PRECIO_VENTA} por crédito al cliente
+            </p>
             <div className="grid grid-cols-4 gap-3">
               {[1, 5, 10, 20].map(cant => (
                 <button
                   key={cant}
                   onClick={() => {
                     if ((bar?.creditos_disponibles || 0) >= cant) {
-                      setCreditosAVender(cant)
-                      setNombreClienteInput('')
-                      setModalClienteAbierto(true)
+                      setCreditosAAcreditar(cant)
+                      setModalAcreditacionAbierto(true)
                     } else {
-                      alert('❌ No tienes suficientes créditos')
+                      alert('❌ No tienes suficientes créditos en stock. Compra más al proveedor.')
                     }
                   }}
                   disabled={(bar?.creditos_disponibles || 0) < cant}
@@ -862,9 +951,10 @@ export default function RockolaSaaS() {
             )}
           </div>
 
-          {/* Links */}
+          {/* Links únicos del bar */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">🔗 Links del Sistema</h2>
+            <h2 className="font-bold text-lg mb-4">🔗 Links de Tu Bar</h2>
+            <p className="text-gray-500 text-sm mb-4">Estos links son únicos para tu bar</p>
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-gray-100 p-3 rounded-xl">
                 <div>
@@ -936,21 +1026,19 @@ export default function RockolaSaaS() {
     }
 
     // Función para eliminar transacción
-    const eliminarTransaccion = async (transaccionId: string, barId: string, cantidad: number, tipo: string) => {
+    const eliminarTransaccion = async (transaccionId: string, targetBarId: string, cantidad: number, tipo: string) => {
       if (!confirm('¿Estás seguro de eliminar esta transacción?')) return
       
       try {
-        // Eliminar transacción
         await supabase.from('transacciones').delete().eq('id', transaccionId)
         
-        // Si es compra_software, restar créditos del bar
         if (tipo === 'compra_software') {
-          const { data: bar } = await supabase.from('bares').select('creditos_disponibles').eq('id', barId).single()
+          const { data: bar } = await supabase.from('bares').select('creditos_disponibles').eq('id', targetBarId).single()
           if (bar) {
             await supabase
               .from('bares')
               .update({ creditos_disponibles: Math.max(0, bar.creditos_disponibles - cantidad) })
-              .eq('id', barId)
+              .eq('id', targetBarId)
           }
         }
         
@@ -958,6 +1046,20 @@ export default function RockolaSaaS() {
         alert('✅ Transacción eliminada')
       } catch (error) {
         alert('Error al eliminar')
+      }
+    }
+
+    // Crear nuevo bar
+    const handleCrearBar = async () => {
+      const nombre = prompt('Nombre del nuevo bar:')
+      if (nombre) {
+        try {
+          const nuevoBar = await crearBar(nombre)
+          alert(`✅ Bar "${nombre}" creado\nID: ${nuevoBar.id}`)
+          cargarDatos()
+        } catch (error) {
+          alert('Error al crear bar')
+        }
       }
     }
 
@@ -971,6 +1073,9 @@ export default function RockolaSaaS() {
               <p className="text-sm opacity-80">Panel de Control - Dueño del SaaS</p>
             </div>
             <div className="flex gap-2">
+              <button onClick={handleCrearBar} className="bg-blue-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Nuevo Bar
+              </button>
               <button onClick={exportarExcel} className="bg-green-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4" /> Excel
               </button>
@@ -996,40 +1101,54 @@ export default function RockolaSaaS() {
               <p className="text-4xl font-bold text-purple-600">{bares.length}</p>
             </div>
             <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-              <p className="text-gray-500 text-sm">Total Créditos Activos</p>
-              <p className="text-4xl font-bold text-green-600">
+              <p className="text-gray-500 text-sm">Total Stock</p>
+              <p className="text-4xl font-bold text-blue-600">
                 {bares.reduce((sum, b) => sum + b.creditos_disponibles, 0)}
               </p>
             </div>
             <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-              <p className="text-gray-500 text-sm">Ventas Totales</p>
-              <p className="text-4xl font-bold text-blue-600">
-                ₡{todasTransacciones.filter(t => t.tipo === 'compra_software').reduce((sum, t) => sum + t.total, 0).toLocaleString()}
+              <p className="text-gray-500 text-sm">Total en Pantallas</p>
+              <p className="text-4xl font-bold text-green-600">
+                {bares.reduce((sum, b) => sum + (b.creditos_pantalla || 0), 0)}
               </p>
             </div>
           </div>
 
-          {/* Lista de Bares - Acreditar Créditos */}
+          {/* Lista de bares */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">🏪 Bares - Acreditar Créditos</h2>
+            <h2 className="font-bold text-lg mb-4">🏪 Lista de Bares</h2>
             <div className="space-y-4">
               {bares.map(b => (
-                <div key={b.id} className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center justify-between mb-3">
+                <div key={b.id} className="border rounded-xl p-4">
+                  <div className="flex justify-between items-start mb-3">
                     <div>
-                      <p className="font-bold text-lg">{b.nombre}</p>
-                      <p className="text-gray-500">Créditos actuales: <span className="font-bold text-green-600">{b.creditos_disponibles}</span></p>
+                      <h3 className="font-bold text-lg">{b.nombre}</h3>
+                      <p className="text-xs text-gray-400">ID: {b.id}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-sm ${b.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {b.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div className="bg-blue-50 rounded-lg p-2 text-center">
+                      <p className="text-xs text-blue-600">Stock</p>
+                      <p className="text-2xl font-bold text-blue-700">{b.creditos_disponibles}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-2 text-center">
+                      <p className="text-xs text-green-600">En Pantalla</p>
+                      <p className="text-2xl font-bold text-green-700">{b.creditos_pantalla || 0}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  
+                  <div className="flex gap-2">
                     {[50, 100, 200, 500].map(cant => (
                       <button
                         key={cant}
                         onClick={() => comprarCreditos(b.id, cant)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-colors"
+                        className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-bold text-sm transition-colors"
                       >
                         +{cant}
-                        <span className="block text-xs opacity-80">₡{(cant * PRECIO_COMPRA).toLocaleString()}</span>
                       </button>
                     ))}
                   </div>
@@ -1038,72 +1157,29 @@ export default function RockolaSaaS() {
             </div>
           </div>
 
-          {/* Últimas transacciones con opción de borrar */}
+          {/* Últimas transacciones */}
           <div className="bg-white rounded-2xl p-6 shadow-lg">
             <h2 className="font-bold text-lg mb-4">📊 Últimas Transacciones</h2>
-            <p className="text-gray-500 text-sm mb-4">Haz clic en 🗑️ para eliminar una transacción incorrecta</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="p-2 text-left">Fecha</th>
-                    <th className="p-2 text-left">Bar</th>
-                    <th className="p-2 text-left">Tipo</th>
-                    <th className="p-2 text-right">Cantidad</th>
-                    <th className="p-2 text-right">Total</th>
-                    <th className="p-2 text-center">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todasTransacciones.slice(0, 30).map(t => (
-                    <tr key={t.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{new Date(t.creado_en).toLocaleDateString()}</td>
-                      <td className="p-2">{bares.find(b => b.id === t.bar_id)?.nombre || '-'}</td>
-                      <td className="p-2">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          t.tipo === 'compra_software' ? 'bg-blue-100 text-blue-700' :
-                          t.tipo === 'venta_cliente' ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {t.tipo === 'compra_software' ? 'Compra' : t.tipo === 'venta_cliente' ? 'Venta' : t.tipo}
-                        </span>
-                      </td>
-                      <td className="p-2 text-right font-medium">{t.cantidad}</td>
-                      <td className="p-2 text-right font-bold">₡{t.total.toLocaleString()}</td>
-                      <td className="p-2 text-center">
-                        <button 
-                          onClick={() => eliminarTransaccion(t.id, t.bar_id, t.cantidad, t.tipo)}
-                          className="text-red-400 hover:text-red-600 p-1"
-                          title="Eliminar transacción"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Links */}
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <h2 className="font-bold text-lg mb-4">🔗 Links del Sistema</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { name: '📺 TV', url: getUrlTV() },
-                { name: '👤 Cliente', url: getUrlCliente() },
-                { name: '👑 Admin Bar', url: getUrlAdmin() },
-                { name: '🔐 Super Admin', url: getUrlSuperAdmin() }
-              ].map(link => (
-                <div key={link.name} className="flex items-center justify-between bg-gray-100 p-3 rounded-xl">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold">{link.name}</p>
-                    <p className="text-xs text-gray-500 truncate">{link.url}</p>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {todasTransacciones.slice(0, 20).map(t => (
+                <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <div>
+                    <p className="font-medium">{bares.find(b => b.id === t.bar_id)?.nombre || 'N/A'}</p>
+                    <p className="text-sm text-gray-500">{t.descripcion}</p>
+                    <p className="text-xs text-gray-400">{new Date(t.creado_en).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => copiarUrl(link.url)} className="text-blue-500 ml-2">
-                    <Copy className="w-5 h-5" />
-                  </button>
+                  <div className="text-right">
+                    <p className={`font-bold ${t.tipo === 'compra_software' ? 'text-green-600' : 'text-red-600'}`}>
+                      {t.tipo === 'compra_software' ? '+' : '-'}{t.cantidad}
+                    </p>
+                    <p className="text-sm text-gray-500">₡{t.total}</p>
+                    <button 
+                      onClick={() => eliminarTransaccion(t.id, t.bar_id, t.cantidad, t.tipo)}
+                      className="text-xs text-red-400 hover:text-red-600"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
