@@ -36,6 +36,8 @@ export interface Bar {
   precio_compra: number
   precio_venta: number
   activo: boolean
+  whatsapp?: string
+  correo?: string
   creado_en: string
   actualizado_en: string
 }
@@ -46,6 +48,7 @@ export interface InstanciaRockola {
   creditos_pantalla: number
   volumen: number
   pausado: boolean
+  skip_requested: boolean
 }
 
 export interface CancionCola {
@@ -398,11 +401,13 @@ export async function obtenerTodosLosBares() {
 }
 
 // Crear nuevo bar (Super Admin)
-export async function crearBar(nombre: string) {
+export async function crearBar(nombre: string, whatsapp?: string, correo?: string) {
   const { data, error } = await supabase
     .from('bares')
     .insert([{
       nombre,
+      whatsapp: whatsapp || null,
+      correo: correo || null,
       creditos_disponibles: 0,
       creditos_pantalla: 0,
       precio_compra: 40,
@@ -414,6 +419,111 @@ export async function crearBar(nombre: string) {
   
   if (error) throw error
   return data as Bar
+}
+
+// Actualizar estado activo del bar
+export async function actualizarEstadoBar(barId: string, activo: boolean) {
+  const { error } = await supabase
+    .from('bares')
+    .update({ activo })
+    .eq('id', barId)
+  
+  if (error) throw error
+}
+
+// Eliminar bar
+export async function eliminarBar(barId: string) {
+  // Primero eliminar transacciones relacionadas
+  await supabase.from('transacciones').delete().eq('bar_id', barId)
+  // Eliminar canciones de la cola
+  await supabase.from('canciones_cola').delete().eq('bar_id', barId)
+  // Finalmente eliminar el bar
+  const { error } = await supabase.from('bares').delete().eq('id', barId)
+  if (error) throw error
+}
+
+// ============= CONTROL DE REPRODUCCIÓN =============
+
+// Obtener instancia de rockola para control
+export async function obtenerInstanciaControl(barId: string) {
+  const { data, error } = await supabase
+    .from('instancias_rockola')
+    .select('*')
+    .eq('bar_id', barId)
+    .single()
+  
+  if (error && error.code !== 'PGRST116') throw error
+  return data as InstanciaRockola | null
+}
+
+// Crear instancia de rockola si no existe
+export async function crearInstanciaControl(barId: string) {
+  const { data, error } = await supabase
+    .from('instancias_rockola')
+    .insert([{
+      bar_id: barId,
+      creditos_pantalla: 0,
+      volumen: 50,
+      pausado: false,
+      skip_requested: false
+    }])
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as InstanciaRockola
+}
+
+// Solicitar pausa/play
+export async function togglePausa(barId: string, pausado: boolean) {
+  // Verificar si existe instancia
+  let instancia = await obtenerInstanciaControl(barId)
+  if (!instancia) {
+    instancia = await crearInstanciaControl(barId)
+  }
+  
+  const { error } = await supabase
+    .from('instancias_rockola')
+    .update({ pausado })
+    .eq('bar_id', barId)
+  
+  if (error) throw error
+}
+
+// Solicitar skip de canción
+export async function solicitarSkip(barId: string) {
+  let instancia = await obtenerInstanciaControl(barId)
+  if (!instancia) {
+    instancia = await crearInstanciaControl(barId)
+  }
+  
+  const { error } = await supabase
+    .from('instancias_rockola')
+    .update({ skip_requested: true })
+    .eq('bar_id', barId)
+  
+  if (error) throw error
+}
+
+// Limpiar solicitud de skip (usado por TV después de procesar)
+export async function limpiarSkip(barId: string) {
+  await supabase
+    .from('instancias_rockola')
+    .update({ skip_requested: false })
+    .eq('bar_id', barId)
+}
+
+// Actualizar volumen
+export async function actualizarVolumen(barId: string, volumen: number) {
+  let instancia = await obtenerInstanciaControl(barId)
+  if (!instancia) {
+    instancia = await crearInstanciaControl(barId)
+  }
+  
+  await supabase
+    .from('instancias_rockola')
+    .update({ volumen })
+    .eq('bar_id', barId)
 }
 
 // Obtener todas las transacciones (Super Admin)
@@ -443,6 +553,7 @@ export function suscribirseACambios(barId: string, callbacks: {
   onBarCambio?: (bar: Bar) => void
   onColaCambio?: (cola: CancionCola[]) => void
   onTransaccionCambio?: () => void
+  onControlCambio?: (instancia: InstanciaRockola) => void
 }) {
   const canal = supabase.channel(`rockola-${barId}`)
   
@@ -471,6 +582,20 @@ export function suscribirseACambios(barId: string, callbacks: {
     }, async () => {
       const cola = await obtenerCola(barId)
       callbacks.onColaCambio!(cola)
+    })
+  }
+  
+  // Escuchar cambios en control de reproducción
+  if (callbacks.onControlCambio) {
+    canal.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'instancias_rockola',
+      filter: `bar_id=eq.${barId}`
+    }, (payload) => {
+      if (payload.new) {
+        callbacks.onControlCambio!(payload.new as InstanciaRockola)
+      }
     })
   }
   
