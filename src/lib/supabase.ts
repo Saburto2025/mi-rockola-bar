@@ -38,6 +38,7 @@ export interface Bar {
   activo: boolean
   whatsapp?: string
   correo?: string
+  clave_admin?: string
   creado_en: string
   actualizado_en: string
 }
@@ -401,13 +402,14 @@ export async function obtenerTodosLosBares() {
 }
 
 // Crear nuevo bar (Super Admin)
-export async function crearBar(nombre: string, whatsapp?: string, correo?: string) {
+export async function crearBar(nombre: string, whatsapp?: string, correo?: string, claveAdmin?: string) {
   const { data, error } = await supabase
     .from('bares')
     .insert([{
       nombre,
       whatsapp: whatsapp || null,
       correo: correo || null,
+      clave_admin: claveAdmin || '1234',
       creditos_disponibles: 0,
       creditos_pantalla: 0,
       precio_compra: 40,

@@ -7,7 +7,7 @@ import {
   Play, Pause, SkipForward, Volume2, VolumeX,
   Users, CreditCard, Music, Search, Trash2, Check, X, Crown,
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
-  Plus, Minus, LogOut, Copy, Calendar, TrendingUp
+  Plus, Minus, LogOut, Copy, Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
 import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
@@ -74,6 +74,13 @@ export default function RockolaSaaS() {
   
   // ============= ESTADO PARA NUEVO BAR CREADO =============
   const [nuevoBarCreado, setNuevoBarCreado] = useState<{bar: Bar, claveAdmin: string} | null>(null)
+  
+  // ============= ESTADOS PARA FORMULARIO NUEVO BAR =============
+  const [nuevoBarNombre, setNuevoBarNombre] = useState('')
+  const [nuevoBarWhatsApp, setNuevoBarWhatsApp] = useState('')
+  const [nuevoBarCorreo, setNuevoBarCorreo] = useState('')
+  const [nuevoBarClave, setNuevoBarClave] = useState('')
+  const [creandoBar, setCreandoBar] = useState(false)
 
   // ============= PLAYER =============
   const [player, setPlayer] = useState<any>(null)
@@ -84,7 +91,6 @@ export default function RockolaSaaS() {
   const [currentUrl, setCurrentUrl] = useState('')
 
   // ============= BAR ID ACTUAL =============
-  // Se obtiene de la URL (?bar=ID), barSeleccionado o bar
   const [urlBarId, setUrlBarId] = useState<string>('')
   
   // ============= DETECTAR MODO Y BAR ID AL CARGAR =============
@@ -93,7 +99,6 @@ export default function RockolaSaaS() {
     const modoUrl = params.get('modo')
     const barIdUrl = params.get('bar')
     
-    // Guardar el bar ID de la URL
     if (barIdUrl) {
       setUrlBarId(barIdUrl)
     }
@@ -188,7 +193,7 @@ export default function RockolaSaaS() {
         unsubscribeRef.current()
       }
     }
-  }, [modo, barId]) // Solo re-suscribir si cambia modo o barId
+  }, [modo, barId])
 
   // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
   const buscarVideos = async () => {
@@ -407,6 +412,44 @@ export default function RockolaSaaS() {
     }
   }
 
+  // ============= CREAR NUEVO BAR =============
+  const handleCrearBar = async () => {
+    if (!nuevoBarNombre.trim()) {
+      alert('❌ Ingresa el nombre del bar')
+      return
+    }
+    
+    setCreandoBar(true)
+    try {
+      const nuevoBar = await crearBar(
+        nuevoBarNombre.trim(),
+        nuevoBarWhatsApp.trim() || undefined,
+        nuevoBarCorreo.trim() || undefined,
+        nuevoBarClave.trim() || '1234'
+      )
+      
+      // Mostrar los links del nuevo bar
+      setNuevoBarCreado({
+        bar: nuevoBar,
+        claveAdmin: nuevoBarClave.trim() || '1234'
+      })
+      
+      // Limpiar formulario
+      setNuevoBarNombre('')
+      setNuevoBarWhatsApp('')
+      setNuevoBarCorreo('')
+      setNuevoBarClave('')
+      
+      // Recargar lista de bares
+      await cargarDatos(undefined, true)
+      
+    } catch (error: any) {
+      console.error('Error creando bar:', error)
+      alert('❌ Error al crear el bar: ' + error.message)
+    }
+    setCreandoBar(false)
+  }
+
   // ============= REPRODUCIR SIGUIENTE AUTOMÁTICAMENTE =============
   useEffect(() => {
     if (modo === 'tv' && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
@@ -415,10 +458,19 @@ export default function RockolaSaaS() {
   }, [modo, cancionActual, cola, reproducirSiguiente])
 
   // ============= URLS EXCLUSIVAS =============
-  const getUrlCliente = () => barId ? `${currentUrl}?bar=${barId}&modo=cliente` : `${currentUrl}?modo=cliente`
-  const getUrlAdmin = () => barId ? `${currentUrl}?bar=${barId}&modo=admin` : `${currentUrl}?modo=admin`
+  const getUrlCliente = (barIdParam?: string) => {
+    const id = barIdParam || barId
+    return id ? `${currentUrl}?bar=${id}&modo=cliente` : `${currentUrl}?modo=cliente`
+  }
+  const getUrlAdmin = (barIdParam?: string) => {
+    const id = barIdParam || barId
+    return id ? `${currentUrl}?bar=${id}&modo=admin` : `${currentUrl}?modo=admin`
+  }
+  const getUrlTV = (barIdParam?: string) => {
+    const id = barIdParam || barId
+    return id ? `${currentUrl}?bar=${id}` : currentUrl
+  }
   const getUrlSuperAdmin = () => `${currentUrl}?modo=superadmin`
-  const getUrlTV = () => barId ? `${currentUrl}?bar=${barId}` : currentUrl
 
   const copiarUrl = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -528,6 +580,60 @@ export default function RockolaSaaS() {
     </div>
   )
 
+  // ============= MODAL LINKS NUEVO BAR =============
+  const ModalLinksNuevoBar = () => (
+    <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 ${nuevoBarCreado ? '' : 'hidden'}`}>
+      <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">🎉 Bar Creado: {nuevoBarCreado?.bar.nombre}</h3>
+        <p className="text-gray-600 mb-4">Guarda estos links para acceder a cada pantalla:</p>
+        
+        <div className="space-y-3 mb-4">
+          <div className="bg-gray-100 p-3 rounded-lg">
+            <p className="text-sm text-gray-500 mb-1">📺 TV (Pantalla del bar)</p>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlTV(nuevoBarCreado?.bar.id)}</code>
+              <button onClick={() => copiarUrl(getUrlTV(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-gray-100 p-3 rounded-lg">
+            <p className="text-sm text-gray-500 mb-1">👤 Cliente (Para pedir música)</p>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlCliente(nuevoBarCreado?.bar.id)}</code>
+              <button onClick={() => copiarUrl(getUrlCliente(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-gray-100 p-3 rounded-lg">
+            <p className="text-sm text-gray-500 mb-1">🔑 Admin (Panel del bar)</p>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlAdmin(nuevoBarCreado?.bar.id)}</code>
+              <button onClick={() => copiarUrl(getUrlAdmin(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-yellow-100 p-3 rounded-lg border border-yellow-300">
+            <p className="text-sm text-yellow-700 mb-1">🔐 Clave Admin</p>
+            <p className="text-lg font-bold text-yellow-800">{nuevoBarCreado?.claveAdmin}</p>
+          </div>
+        </div>
+        
+        <button 
+          onClick={() => setNuevoBarCreado(null)}
+          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition-colors"
+        >
+          Cerrar
+        </button>
+      </div>
+    </div>
+  )
+
   // ================================================================
   // MODO TV - PANTALLA LIMPIA SOLO VIDEO
   // ================================================================
@@ -572,7 +678,7 @@ export default function RockolaSaaS() {
               <p className="text-gray-400 text-xl mb-8">{bar?.nombre || 'Esperando conexión...'}</p>
               <p className="text-gray-500 text-lg mb-12">Esperando canciones...</p>
               
-              {currentUrl && (
+              {currentUrl && barId && (
                 <div className="bg-white p-6 rounded-2xl inline-block shadow-2xl">
                   <QRCodeSVG value={getUrlCliente()} size={180} />
                   <p className="text-black mt-4 font-bold text-lg">📱 Escanea para pedir música</p>
@@ -690,7 +796,7 @@ export default function RockolaSaaS() {
               </button>
             </div>
 
-            {/* RESULTADOS EN MODO LISTA */}
+            {/* RESULTADOS EN MODO LISTA - CON BOTÓN AGREGAR */}
             {videosBusqueda.length > 0 && (
               <div className="border-t border-gray-700 pt-3">
                 <p className="text-gray-400 text-sm mb-2">Resultados ({videosBusqueda.length}) - Click para agregar:</p>
@@ -939,33 +1045,15 @@ export default function RockolaSaaS() {
             </div>
             <div className="mt-3 flex items-center gap-3">
               {volumen === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              <input type="range" min="0" max="100" value={volumen} onChange={(e) => cambiarVolumen(parseInt(e.target.value))} className="flex-1" />
-              <span className="w-10 text-right text-sm">{volumen}%</span>
-            </div>
-          </div>
-
-          {/* Links exclusivos */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🔗 Links Exclusivos</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">📺 TV</p>
-                  <p className="text-xs text-gray-400 truncate max-w-[150px]">{getUrlTV()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">🍻 Clientes</p>
-                  <p className="text-xs text-gray-400 truncate max-w-[150px]">{getUrlCliente()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volumen}
+                onChange={(e) => cambiarVolumen(parseInt(e.target.value))}
+                className="flex-1"
+              />
+              <span className="text-sm w-8">{volumen}%</span>
             </div>
           </div>
         </div>
@@ -974,26 +1062,34 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO SUPER ADMIN - DUEÑO DEL SOFTWARE SAAS
+  // MODO SUPER ADMIN - GESTIÓN DE BARES
   // ================================================================
   if (modo === 'superadmin') {
     if (!isAuthed) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-700 to-purple-900 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 to-purple-600 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
             <Building className="w-16 h-16 text-purple-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-center mb-2">🏢 SUPER ADMIN</h2>
-            <p className="text-center text-gray-500 mb-6">Dueño del Software SaaS</p>
+            <p className="text-center text-gray-500 mb-6">Panel de administración global</p>
             <input
               type="password"
               value={claveInput}
               onChange={(e) => setClaveInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta'))}
+              onKeyDown={(e) => e.key === 'Enter' && (
+                claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta')
+              )}
               placeholder="Ingresa tu clave"
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none"
             />
             <button
-              onClick={() => claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta')}
+              onClick={() => {
+                if (claveInput === CLAVE_SUPER_ADMIN) {
+                  setIsAuthed(true)
+                } else {
+                  alert('❌ Clave incorrecta')
+                }
+              }}
               className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl transition-colors"
             >
               ENTRAR
@@ -1003,13 +1099,19 @@ export default function RockolaSaaS() {
       )
     }
 
-    // Filtrar transacciones de ventas a bares
-    const ventasABares = todasTransacciones.filter(t => t.tipo === 'compra_software')
-    const totalVentas = ventasABares.reduce((acc, t) => acc + t.total, 0)
+    // Calcular estadísticas
+    const totalBares = bares.length
+    const totalCreditos = bares.reduce((sum, b) => sum + (b.creditos_disponibles || 0), 0)
+    const totalVentas = todasTransacciones
+      .filter(t => t.tipo === 'compra_software')
+      .reduce((sum, t) => sum + (t.total || 0), 0)
+    const precioBase = bares.length > 0 ? bares[0].precio_compra : 40
 
     return (
       <div className="min-h-screen bg-gray-900 text-white">
-        <div className="bg-gradient-to-r from-purple-700 to-purple-900 p-4 sticky top-0 z-10">
+        <ModalLinksNuevoBar />
+        
+        <div className="bg-gradient-to-r from-purple-700 to-purple-800 p-4 sticky top-0 z-10">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-3">
               <Building className="w-8 h-8" />
@@ -1029,290 +1131,163 @@ export default function RockolaSaaS() {
 
         <div className="max-w-6xl mx-auto p-4 space-y-4">
           {/* Resumen general */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-gradient-to-br from-purple-800 to-purple-900 rounded-xl p-3 border border-purple-600">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gradient-to-br from-purple-800 to-purple-900 rounded-xl p-4 border border-purple-600">
               <p className="text-purple-300 text-xs">BARES ACTIVOS</p>
-              <p className="text-3xl font-bold text-white">{bares.length}</p>
+              <p className="text-3xl font-bold text-white">{totalBares}</p>
             </div>
-            <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-xl p-3 border border-green-600">
+            <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-xl p-4 border border-green-600">
               <p className="text-green-300 text-xs">CRÉDITOS TOTALES</p>
-              <p className="text-3xl font-bold text-white">{bares.reduce((acc, b) => acc + (b.creditos_disponibles || 0), 0)}</p>
+              <p className="text-3xl font-bold text-white">{totalCreditos}</p>
             </div>
-            <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-3 border border-blue-600">
+            <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-4 border border-blue-600">
               <p className="text-blue-300 text-xs">PRECIO BASE</p>
-              <p className="text-2xl font-bold text-white">$5/cred</p>
+              <p className="text-2xl font-bold text-white">${precioBase}/cr</p>
             </div>
-            <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-3 border border-yellow-600">
+            <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-4 border border-yellow-600">
               <p className="text-yellow-300 text-xs">TOTAL VENTAS</p>
-              <p className="text-3xl font-bold text-white">${totalVentas}</p>
+              <p className="text-2xl font-bold text-white">${totalVentas}</p>
             </div>
           </div>
 
-          {/* CREAR NUEVO BAR */}
+          {/* Agregar nuevo bar */}
           <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">➕ Agregar Nuevo Bar</h3>
-            
-            {/* Modal para mostrar links del nuevo bar */}
-            {nuevoBarCreado && (
-              <div className="bg-green-900/50 border-2 border-green-500 rounded-xl p-4 mb-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-bold text-green-400">✅ Bar Creado: {nuevoBarCreado.bar.nombre}</h4>
-                  <button onClick={() => setNuevoBarCreado(null)} className="text-gray-400 hover:text-white">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <p className="text-gray-300 mb-2">Comparte estos links con el dueño del bar:</p>
-                  <div className="bg-gray-800 p-2 rounded flex items-center justify-between">
-                    <div>
-                      <span className="text-purple-400">📺 TV:</span>
-                      <span className="ml-2 text-gray-300 text-xs">{currentUrl}?bar={nuevoBarCreado.bar.id}</span>
-                    </div>
-                    <button onClick={() => {navigator.clipboard.writeText(`${currentUrl}?bar=${nuevoBarCreado.bar.id}`); alert('Link TV copiado!')}} className="text-blue-400 hover:text-blue-300">
-                      <Copy className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="bg-gray-800 p-2 rounded flex items-center justify-between">
-                    <div>
-                      <span className="text-green-400">👤 Cliente:</span>
-                      <span className="ml-2 text-gray-300 text-xs">{currentUrl}?bar={nuevoBarCreado.bar.id}&modo=cliente</span>
-                    </div>
-                    <button onClick={() => {navigator.clipboard.writeText(`${currentUrl}?bar=${nuevoBarCreado.bar.id}&modo=cliente`); alert('Link Cliente copiado!')}} className="text-blue-400 hover:text-blue-300">
-                      <Copy className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="bg-gray-800 p-2 rounded flex items-center justify-between">
-                    <div>
-                      <span className="text-yellow-400">🔑 Admin:</span>
-                      <span className="ml-2 text-gray-300 text-xs">{currentUrl}?bar={nuevoBarCreado.bar.id}&modo=admin</span>
-                    </div>
-                    <button onClick={() => {navigator.clipboard.writeText(`${currentUrl}?bar=${nuevoBarCreado.bar.id}&modo=admin`); alert('Link Admin copiado!')}} className="text-blue-400 hover:text-blue-300">
-                      <Copy className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="bg-gray-800 p-2 rounded mt-2">
-                    <span className="text-red-400">🔐 Clave Admin:</span>
-                    <span className="ml-2 text-white font-bold">{nuevoBarCreado.claveAdmin}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <form onSubmit={async (e) => {
-              e.preventDefault()
-              const formData = new FormData(e.target as HTMLFormElement)
-              const nombre = formData.get('nombre') as string
-              const whatsapp = formData.get('whatsapp') as string
-              const correo = formData.get('correo') as string
-              const claveAdmin = formData.get('clave') as string
-              
-              if (nombre) {
-                try {
-                  const nuevoBar = await crearBar(nombre, whatsapp, correo, claveAdmin || undefined)
-                  await cargarDatos()
-                  // Mostrar los links en pantalla
-                  setNuevoBarCreado({ bar: nuevoBar, claveAdmin: claveAdmin || '1234' })
-                  // Limpiar el formulario
-                  ;(e.target as HTMLFormElement).reset()
-                } catch (error) {
-                  alert('❌ Error al crear bar')
-                }
-              }
-            }} className="space-y-3">
-              <input 
-                name="nombre"
+            <h3 className="font-bold mb-3 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-green-400" />
+              Agregar Nuevo Bar
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                value={nuevoBarNombre}
+                onChange={(e) => setNuevoBarNombre(e.target.value)}
                 placeholder="Nombre del bar *"
-                required
-                className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                className="bg-gray-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
               />
-              <div className="grid grid-cols-2 gap-3">
-                <input 
-                  name="whatsapp"
-                  placeholder="WhatsApp (ej: +506 8888-8888)"
-                  className="bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                />
-                <input 
-                  name="correo"
-                  type="email"
-                  placeholder="Correo electrónico"
-                  className="bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                />
-              </div>
-              <div className="flex gap-3">
-                <input 
-                  name="clave"
-                  placeholder="Clave admin (default: 1234)"
-                  className="flex-1 bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                />
-                <button type="submit" className="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded-lg font-bold">
-                  Crear Bar
-                </button>
-              </div>
-            </form>
+              <input
+                type="text"
+                value={nuevoBarWhatsApp}
+                onChange={(e) => setNuevoBarWhatsApp(e.target.value)}
+                placeholder="WhatsApp (opcional)"
+                className="bg-gray-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <input
+                type="email"
+                value={nuevoBarCorreo}
+                onChange={(e) => setNuevoBarCorreo(e.target.value)}
+                placeholder="Correo electrónico (opcional)"
+                className="bg-gray-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={nuevoBarClave}
+                onChange={(e) => setNuevoBarClave(e.target.value)}
+                placeholder="Clave admin (default: 1234)"
+                className="bg-gray-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+            </div>
+            <button
+              onClick={handleCrearBar}
+              disabled={creandoBar || !nuevoBarNombre.trim()}
+              className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-600 py-3 rounded-lg font-bold transition-colors"
+            >
+              {creandoBar ? 'Creando...' : 'Crear Bar'}
+            </button>
           </div>
 
-          {/* LISTA DE BARES */}
+          {/* Lista de bares */}
           <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🏪 Lista de Bares ({bares.length})</h3>
+            <h3 className="font-bold mb-3 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-blue-400" />
+              Lista de Bares ({bares.length})
+            </h3>
             <div className="space-y-3">
               {bares.map((barItem) => (
-                <div key={barItem.id} className="bg-gray-700 p-3 rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
+                <div key={barItem.id} className="bg-gray-700 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h4 className="font-bold">{barItem.nombre}</h4>
-                      <p className="text-xs text-gray-400">ID: {barItem.id.substring(0, 8)}...</p>
-                      {barItem.whatsapp && <p className="text-xs text-green-400">📱 {barItem.whatsapp}</p>}
-                      {barItem.correo && <p className="text-xs text-blue-400">📧 {barItem.correo}</p>}
+                      <h4 className="font-bold text-lg">{barItem.nombre}</h4>
+                      <p className="text-gray-400 text-xs">ID: {barItem.id.substring(0, 8)}...</p>
+                      {barItem.whatsapp && <p className="text-green-400 text-sm">📱 {barItem.whatsapp}</p>}
+                      {barItem.correo && <p className="text-blue-400 text-sm">📧 {barItem.correo}</p>}
+                      <p className="text-yellow-400 text-sm mt-1">🔐 Clave: {barItem.clave_admin || '1234'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xl font-bold text-green-400">{barItem.creditos_disponibles || 0} créditos</p>
-                      <p className="text-xs text-gray-400">Clave: {barItem.clave_admin || '1234'}</p>
+                      <p className="text-green-400 text-xl font-bold">{barItem.creditos_disponibles} cr.</p>
+                      <p className="text-gray-400 text-sm">Stock disponible</p>
                     </div>
                   </div>
                   
                   {/* Links del bar */}
-                  <div className="bg-gray-800 rounded p-2 mb-2 text-xs">
-                    <p className="text-gray-400 mb-1">Links:</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => {
-                        navigator.clipboard.writeText(`${currentUrl}?bar=${barItem.id}`)
-                        alert('Link TV copiado')
-                      }} className="bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded">
-                        📺 TV
-                      </button>
-                      <button onClick={() => {
-                        navigator.clipboard.writeText(`${currentUrl}?bar=${barItem.id}&modo=cliente`)
-                        alert('Link Cliente copiado')
-                      }} className="bg-green-600 hover:bg-green-500 px-2 py-1 rounded">
-                        👤 Cliente
-                      </button>
-                      <button onClick={() => {
-                        navigator.clipboard.writeText(`${currentUrl}?bar=${barItem.id}&modo=admin`)
-                        alert('Link Admin copiado')
-                      }} className="bg-yellow-600 hover:bg-yellow-500 px-2 py-1 rounded text-black">
-                        🔑 Admin
-                      </button>
-                    </div>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <button
+                      onClick={() => copiarUrl(getUrlTV(barItem.id))}
+                      className="bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded text-xs font-bold flex items-center justify-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> TV
+                    </button>
+                    <button
+                      onClick={() => copiarUrl(getUrlCliente(barItem.id))}
+                      className="bg-green-600 hover:bg-green-500 px-2 py-1 rounded text-xs font-bold flex items-center justify-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Cliente
+                    </button>
+                    <button
+                      onClick={() => copiarUrl(getUrlAdmin(barItem.id))}
+                      className="bg-yellow-600 hover:bg-yellow-500 text-black px-2 py-1 rounded text-xs font-bold flex items-center justify-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Admin
+                    </button>
                   </div>
                   
-                  {/* Vender créditos al bar */}
-                  <div className="border-t border-gray-600 pt-2 mt-2">
-                    <p className="text-xs text-gray-400 mb-2">Vender créditos:</p>
-                    <div className="flex gap-1 flex-wrap">
-                      {[10, 50, 100, 200].map(cant => (
-                        <button
-                          key={cant}
-                          onClick={async () => {
-                            try {
-                              await comprarCreditosProveedor(barItem.id, cant, 5)
-                              await cargarDatos(undefined, true)
-                            } catch (error) {
-                              alert('❌ Error')
-                            }
-                          }}
-                          className="bg-green-600 hover:bg-green-500 px-2 py-1 rounded text-xs font-bold"
-                        >
-                          +{cant} (${cant * 5})
-                        </button>
-                      ))}
+                  {/* Vender créditos */}
+                  <div className="border-t border-gray-600 pt-3">
+                    <p className="text-gray-400 text-xs mb-2">Vender créditos (precio: ${barItem.precio_compra}/cr):</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={async () => {
+                          setBarSeleccionado(barItem)
+                          await comprarCreditosSoftware(10, barItem.precio_compra)
+                        }}
+                        className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
+                      >
+                        +10 (${10 * barItem.precio_compra})
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setBarSeleccionado(barItem)
+                          await comprarCreditosSoftware(50, barItem.precio_compra)
+                        }}
+                        className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
+                      >
+                        +50 (${50 * barItem.precio_compra})
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setBarSeleccionado(barItem)
+                          await comprarCreditosSoftware(100, barItem.precio_compra)
+                        }}
+                        className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
+                      >
+                        +100 (${100 * barItem.precio_compra})
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setBarSeleccionado(barItem)
+                          await comprarCreditosSoftware(200, barItem.precio_compra)
+                        }}
+                        className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
+                      >
+                        +200 (${200 * barItem.precio_compra})
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* REPORTE DE VENTAS A BARES */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-400" />
-                📊 Reporte de Ventas a Bares
-              </h3>
-              <span className="text-green-400 font-bold">Total: ${totalVentas}</span>
-            </div>
-            
-            {ventasABares.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-600">
-                      <th className="text-left py-2 px-2">Fecha</th>
-                      <th className="text-left py-2 px-2">Bar</th>
-                      <th className="text-right py-2 px-2">Créditos</th>
-                      <th className="text-right py-2 px-2">Precio Unit.</th>
-                      <th className="text-right py-2 px-2">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ventasABares.map((t) => {
-                      const barInfo = bares.find(b => b.id === t.bar_id)
-                      return (
-                        <tr key={t.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                          <td className="py-2 px-2">
-                            <div className="flex items-center gap-1 text-gray-400">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(t.creado_en).toLocaleDateString()}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {new Date(t.creado_en).toLocaleTimeString()}
-                            </div>
-                          </td>
-                          <td className="py-2 px-2 font-medium">{barInfo?.nombre || 'Bar'}</td>
-                          <td className="py-2 px-2 text-right">{t.cantidad}</td>
-                          <td className="py-2 px-2 text-right">${t.precio_unitario}</td>
-                          <td className="py-2 px-2 text-right text-green-400 font-bold">${t.total}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-center py-4">No hay ventas registradas</p>
-            )}
-          </div>
-
-          {/* Links exclusivos */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <h3 className="font-bold mb-3">🔗 Links del Sistema</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">📺 TV</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlTV()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlTV())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">👑 Admin Bar</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlAdmin()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlAdmin())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">🍻 Clientes</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlCliente()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlCliente())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-gray-700 p-2 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm">🏢 Super Admin</p>
-                  <p className="text-xs text-gray-400 truncate">{getUrlSuperAdmin()}</p>
-                </div>
-                <button onClick={() => copiarUrl(getUrlSuperAdmin())} className="text-blue-400">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              
+              {bares.length === 0 && (
+                <p className="text-gray-500 text-center py-4">No hay bares registrados</p>
+              )}
             </div>
           </div>
         </div>
