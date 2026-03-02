@@ -167,7 +167,7 @@ export default function RockolaSaaS() {
 
     unsubscribeRef.current = suscribirseACambios(barId, {
       onBarCambio: (nuevoBar) => {
-        // Solo actualizar si hay cambios reales
+        // Solo actualizar si hay cambios reales - EVITA PARPADEO
         setBar(prev => {
           if (prev?.id === nuevoBar.id && prev?.creditos_disponibles === nuevoBar.creditos_disponibles) {
             return prev // No cambiar si es igual
@@ -635,7 +635,7 @@ export default function RockolaSaaS() {
   )
 
   // ================================================================
-  // MODO TV - PANTALLA LIMPIA SOLO VIDEO
+  // MODO TV - PANTALLA LIMPIA SOLO VIDEO (SIN QR)
   // ================================================================
   if (modo === 'tv') {
     return (
@@ -685,7 +685,7 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO CLIENTE - EXCLUSIVO PARA CLIENTES CON QR Y SALDO
+  // MODO CLIENTE - CON BOTÓN AGREGAR VERDE
   // ================================================================
   if (modo === 'cliente') {
     if (!clienteRegistrado) {
@@ -764,14 +764,6 @@ export default function RockolaSaaS() {
             </p>
           </div>
 
-          {/* QR para compartir */}
-          <div className="bg-gray-800 rounded-xl p-4 text-center">
-            <p className="text-gray-400 mb-3 text-sm">📱 Comparte este QR con otros clientes</p>
-            <div className="bg-white p-2 rounded-lg inline-block">
-              <QRCodeSVG value={getUrlCliente()} size={100} />
-            </div>
-          </div>
-
           {/* Buscador */}
           <div className="bg-gray-800 rounded-xl p-4">
             <h3 className="font-bold mb-3 text-lg">🔍 Buscar Música o Videos</h3>
@@ -789,7 +781,7 @@ export default function RockolaSaaS() {
               </button>
             </div>
 
-            {/* RESULTADOS EN MODO LISTA - CON BOTÓN AGREGAR */}
+            {/* RESULTADOS CON BOTÓN AGREGAR VERDE */}
             {videosBusqueda.length > 0 && (
               <div className="border-t border-gray-700 pt-3">
                 <p className="text-gray-400 text-sm mb-2">Resultados ({videosBusqueda.length}) - Click para agregar:</p>
@@ -1055,7 +1047,7 @@ export default function RockolaSaaS() {
   }
 
   // ================================================================
-  // MODO SUPER ADMIN - GESTIÓN DE BARES
+  // MODO SUPER ADMIN - GESTIÓN DE BARES CON FORMULARIO COMPLETO
   // ================================================================
   if (modo === 'superadmin') {
     if (!isAuthed) {
@@ -1143,7 +1135,7 @@ export default function RockolaSaaS() {
             </div>
           </div>
 
-          {/* Agregar nuevo bar */}
+          {/* Agregar nuevo bar - FORMULARIO COMPLETO */}
           <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
             <h3 className="font-bold mb-3 flex items-center gap-2">
               <Plus className="w-5 h-5 text-green-400" />
@@ -1188,7 +1180,7 @@ export default function RockolaSaaS() {
             </button>
           </div>
 
-          {/* Lista de bares */}
+          {/* Lista de bares - CON WHATSAPP, CORREO, CLAVE Y BOTONES PARA COPIAR LINKS */}
           <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
             <h3 className="font-bold mb-3 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-400" />
@@ -1211,7 +1203,7 @@ export default function RockolaSaaS() {
                     </div>
                   </div>
                   
-                  {/* Links del bar */}
+                  {/* Links del bar - BOTONES PARA COPIAR */}
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <button
                       onClick={() => copiarUrl(getUrlTV(barItem.id))}
