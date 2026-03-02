@@ -676,14 +676,7 @@ export default function RockolaSaaS() {
               <Music className="w-32 h-32 text-purple-500 mx-auto mb-6 animate-pulse" />
               <h1 className="text-5xl font-bold text-white mb-4">🎵 ROCKOLA</h1>
               <p className="text-gray-400 text-xl mb-8">{bar?.nombre || 'Esperando conexión...'}</p>
-              <p className="text-gray-500 text-lg mb-12">Esperando canciones...</p>
-              
-              {currentUrl && barId && (
-                <div className="bg-white p-6 rounded-2xl inline-block shadow-2xl">
-                  <QRCodeSVG value={getUrlCliente()} size={180} />
-                  <p className="text-black mt-4 font-bold text-lg">📱 Escanea para pedir música</p>
-                </div>
-              )}
+              <p className="text-gray-500 text-lg">Esperando canciones...</p>
             </div>
           </div>
         )}
