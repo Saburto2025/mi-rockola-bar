@@ -27,19 +27,10 @@ const UTILIDAD_CREDITO = PRECIO_VENTA_CREDITO - PRECIO_COMPRA_CREDITO
 const esUUIDValido = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
 const formatColones = (amount: number) => `₡${amount.toLocaleString('es-CR')}`
 
-// ============= VERSIÓN DE LA APP =============
-const VERSION = "V1.0.2"
-
-const VersionBadge = () => (
-  <div className="fixed top-2 right-2 z-[9999] bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black text-lg px-4 py-2 rounded-full shadow-2xl animate-pulse border-2 border-white">
-    {VERSION}
-  </div>
-)
-
 const Branding = () => (
   <div className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500 flex items-center justify-center gap-2 py-2">
     <Sparkles className="w-4 h-4 text-yellow-400" />
-    MERKA 4.0 Rockola Saas para tí - {VERSION}
+    MERKA 4.0 Rockola Saas para tí
     <Sparkles className="w-4 h-4 text-pink-400" />
   </div>
 )
@@ -129,9 +120,6 @@ function RockolaContent() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     setMounted(true)
-    
-    // Log de debug para ver los parámetros
-    console.log('🔍 DEBUG V1.0.2 - URL params:', { modoUrl, barIdUrl, fullURL: window.location.href })
     
     // Verificar si Supabase está configurado
     if (!supabaseConfigured) {
@@ -623,29 +611,21 @@ function RockolaContent() {
   if (!mounted || !urlProcessed) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
-        <VersionBadge />
         <div className="text-center">
           <div className="text-6xl animate-bounce mb-4">🎵</div>
-          <p className="text-white text-2xl font-bold">Cargando Rockola... {VERSION}</p>
-          <p className="text-yellow-400 text-sm mt-2">Procesando URL...</p>
-          <p className="text-green-400 text-xs mt-1">modoUrl={modoUrl} | barIdUrl={barIdUrl || 'vacío'}</p>
+          <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
           <Branding />
         </div>
       </div>
     )
   }
 
-  // DEBUG: Mostrar modo actual
-  console.log('🎵 DEBUG V1.0.2 - modo:', modo, 'barId:', barId, 'modoUrl:', modoUrl, 'barIdUrl:', barIdUrl)
-
   if (cargando && modo !== 'tv') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
-        <VersionBadge />
         <div className="text-center">
           <div className="text-6xl animate-bounce mb-4">🎵</div>
-          <p className="text-white text-2xl font-bold">Cargando Rockola... {VERSION}</p>
-          <p className="text-green-400 text-sm">modo={modo}</p>
+          <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
           <Branding />
         </div>
       </div>
@@ -655,7 +635,6 @@ function RockolaContent() {
   if (error && modo !== 'tv') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-900 via-pink-900 to-purple-900 flex items-center justify-center p-4">
-        <VersionBadge />
         <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center">
           <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-4">😢 Error</h2>
@@ -674,15 +653,6 @@ function RockolaContent() {
     if (!tvActivado) {
       return (
         <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-black to-blue-900 flex items-center justify-center">
-          <VersionBadge />
-          {/* DEBUG INFO - MUY VISIBLE */}
-          <div className="absolute top-16 left-4 bg-black/90 text-white p-4 rounded-lg text-sm border-2 border-green-500">
-            <p className="text-green-400 font-black text-lg">🔧 {VERSION} - DEBUG INFO</p>
-            <p>modo=<span className="text-yellow-400 font-bold">{modo}</span></p>
-            <p>barId=<span className="text-yellow-400 font-bold">{barId || 'sin bar'}</span></p>
-            <p>modoUrl=<span className="text-cyan-400 font-bold">{modoUrl}</span></p>
-            <p>barIdUrl=<span className="text-cyan-400 font-bold">{barIdUrl || 'vacío'}</span></p>
-          </div>
           <div className="text-center p-8">
             <div className="mb-8">
               <Music className="w-32 h-32 text-yellow-400 mx-auto mb-6 animate-bounce" />
@@ -1090,17 +1060,9 @@ function RockolaContent() {
   // MODO SUPER ADMIN
   // ================================================================
   if (modo === 'superadmin') {
-    // DEBUG INFO
-    console.log('👑 SUPER ADMIN - modo:', modo, 'barId:', barId)
-    
     if (!isAuthed) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-red-900 flex items-center justify-center p-4">
-          {/* DEBUG INFO */}
-          <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs">
-            <p>🔧 V1.0.1 - SUPER ADMIN LOGIN</p>
-            <p>modo={modo} | barId={barId || 'sin bar'}</p>
-          </div>
           <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center">
             <Crown className="w-16 h-16 text-purple-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">👑 SUPER ADMIN</h2>
