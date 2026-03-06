@@ -1215,6 +1215,39 @@ function RockolaContent() {
                         <Copy className="w-3 h-3" /> Admin
                       </button>
                     </div>
+                    
+                    {/* Vender Créditos */}
+                    <div className="mt-2 pt-2 border-t border-gray-600">
+                      <p className="text-xs text-gray-400 mb-1">💰 Vender Créditos:</p>
+                      <div className="grid grid-cols-5 gap-1">
+                        {[50, 100, 200, 500, 1000].map((creditos) => {
+                          const precio = creditos * PRECIO_COMPRA_CREDITO
+                          return (
+                            <button
+                              key={creditos}
+                              onClick={async () => {
+                                if (confirm(`¿Vender ${creditos} créditos a ${b.nombre} por ${formatColones(precio)}?`)) {
+                                  try {
+                                    await comprarCreditosProveedor(b.id, creditos, PRECIO_COMPRA_CREDITO)
+                                    const baresData = await obtenerTodosLosBares()
+                                    setBares(baresData)
+                                    const transData = await obtenerTodasTransacciones()
+                                    setTodasTransacciones(transData)
+                                    alert(`✅ ${creditos} créditos agregados a ${b.nombre}`)
+                                  } catch (error) {
+                                    alert('❌ Error al vender créditos')
+                                  }
+                                }
+                              }}
+                              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white text-xs py-2 px-1 rounded font-bold flex flex-col items-center"
+                            >
+                              <span>{creditos}</span>
+                              <span className="text-[10px] opacity-80">{formatColones(precio)}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   </div>
                   
                   {/* Historial expandido */}
