@@ -603,11 +603,15 @@ function RockolaContent() {
         <div className="text-center">
           <div className="text-6xl animate-bounce mb-4">🎵</div>
           <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
+          <p className="text-yellow-400 text-sm mt-2">Montando componente...</p>
           <Branding />
         </div>
       </div>
     )
   }
+
+  // DEBUG: Mostrar modo actual
+  console.log('🎵 DEBUG - modo:', modo, 'barId:', barId, 'modoUrl:', modoUrl, 'barIdUrl:', barIdUrl)
 
   if (cargando && modo !== 'tv') {
     return (
@@ -642,6 +646,10 @@ function RockolaContent() {
     if (!tvActivado) {
       return (
         <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-black to-blue-900 flex items-center justify-center">
+          {/* DEBUG INFO */}
+          <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs">
+            <p>DEBUG: modo={modo} | barId={barId || 'sin bar'}</p>
+          </div>
           <div className="text-center p-8">
             <div className="mb-8">
               <Music className="w-32 h-32 text-yellow-400 mx-auto mb-6 animate-bounce" />
