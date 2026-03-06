@@ -8,12 +8,15 @@ import {
   Plus, LogOut, Copy, ExternalLink, Power, Sparkles,
   Download, FileSpreadsheet, Trash2 as TrashIcon
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, actualizarEstadoBar, eliminarBar, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, supabaseConfigured, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, actualizarEstadoBar, eliminarBar, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // ============= CONFIGURACIÓN =============
 const CLAVE_ADMIN = "1234"
 const CLAVE_SUPER_ADMIN = "rockola2024"
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
+const YOUTUBE_API_KEY = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "") : ""
+
+// Verificar si Supabase está configurado
+const supabaseConfigurado = typeof window !== 'undefined' && supabase !== null
 
 // ============= PRECIOS =============
 const PRECIO_COMPRA_CREDITO = 40
@@ -46,6 +49,7 @@ interface VideoBusqueda {
 
 export default function RockolaSaaS() {
   const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin'>('tv')
+  const [mounted, setMounted] = useState(false)
   const [bar, setBar] = useState<Bar | null>(null)
   const [bares, setBares] = useState<Bar[]>([])
   const [cola, setCola] = useState<CancionCola[]>([])
@@ -88,6 +92,15 @@ export default function RockolaSaaS() {
   // ============= LEER URL AL INICIAR =============
   useEffect(() => {
     if (typeof window === 'undefined') return
+    setMounted(true)
+    
+    // Verificar si Supabase está configurado
+    if (!supabaseConfigured) {
+      setError('⚠️ Supabase no está configurado. Ve a Render → Environment y agrega las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      setCargando(false)
+      return
+    }
+    
     const params = new URLSearchParams(window.location.search)
     const modoUrl = params.get('modo')
     const barIdUrl = params.get('bar')
