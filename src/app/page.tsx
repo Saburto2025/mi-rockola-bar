@@ -48,7 +48,7 @@ interface VideoBusqueda {
 }
 
 export default function RockolaSaaS() {
-  const [modo, setModo] = useState<'tv' | 'cliente' | 'admin' | 'superadmin'>('tv')
+  const [modo, setModo] = useState("tv")
   const [mounted, setMounted] = useState(false)
   const [bar, setBar] = useState<Bar | null>(null)
   const [bares, setBares] = useState<Bar[]>([])
