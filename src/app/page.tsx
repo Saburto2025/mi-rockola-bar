@@ -588,6 +588,19 @@ export default function RockolaSaaS() {
   const formatTime = (secs: number) => `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, '0')}`
 
   // ============= PANTALLAS CARGA/ERROR =============
+  // Esperar a que el componente esté montado para leer la URL correctamente
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl animate-bounce mb-4">🎵</div>
+          <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
+          <Branding />
+        </div>
+      </div>
+    )
+  }
+
   if (cargando && modo !== 'tv') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
