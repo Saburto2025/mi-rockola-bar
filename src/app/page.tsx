@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import YouTube, { YouTubeEvent } from 'react-youtube'
 import {
   Play, Pause, SkipForward, Trash2, Check, X, Crown,
@@ -34,6 +35,17 @@ const Branding = () => (
   </div>
 )
 
+// Loading component for Suspense
+const LoadingScreen = () => (
+  <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
+    <div className="text-center">
+      <div className="text-6xl animate-bounce mb-4">🎵</div>
+      <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
+      <Branding />
+    </div>
+  </div>
+)
+
 interface VideoBusqueda {
   id: { videoId: string }
   snippet: { 
@@ -47,8 +59,13 @@ interface VideoBusqueda {
   esVideoMusical?: boolean
 }
 
-export default function RockolaSaaS() {
-  const [modo, setModo] = useState("tv")
+// Main component that uses useSearchParams
+function RockolaContent() {
+  const searchParams = useSearchParams()
+  const modoUrl = searchParams.get('modo') || 'tv'
+  const barIdUrl = searchParams.get('bar') || ''
+  
+  const [modo, setModo] = useState(modoUrl)
   const [mounted, setMounted] = useState(false)
   const [bar, setBar] = useState<Bar | null>(null)
   const [bares, setBares] = useState<Bar[]>([])
@@ -81,7 +98,6 @@ export default function RockolaSaaS() {
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const isTransitioningRef = useRef(false)
   const [currentUrl, setCurrentUrl] = useState('')
-  const [urlBarId, setUrlBarId] = useState<string>('')
   const [filtroPeriodo, setFiltroPeriodo] = useState<'hoy' | 'semana' | 'mes' | 'todo'>('mes')
   const [filtroBar, setFiltroBar] = useState<string>('todos')
   const [conectado, setConectado] = useState(false)
@@ -89,7 +105,7 @@ export default function RockolaSaaS() {
   const [barExpandido, setBarExpandido] = useState<string | null>(null)
   const [filtroHistorialBar, setFiltroHistorialBar] = useState<{[barId: string]: 'hoy' | 'semana' | 'mes' | 'todo'}>({})
 
-  // ============= LEER URL AL INICIAR =============
+  // ============= INICIALIZACIÓN =============
   useEffect(() => {
     if (typeof window === 'undefined') return
     setMounted(true)
@@ -101,14 +117,6 @@ export default function RockolaSaaS() {
       return
     }
     
-    const params = new URLSearchParams(window.location.search)
-    const modoUrl = params.get('modo')
-    const barIdUrl = params.get('bar')
-    if (barIdUrl) setUrlBarId(barIdUrl)
-    if (modoUrl === 'cliente') setModo('cliente')
-    else if (modoUrl === 'admin') setModo('admin')
-    else if (modoUrl === 'superadmin') setModo('superadmin')
-    else setModo('tv')
     setCurrentUrl(window.location.origin)
     
     // Cargar nombre desde localStorage
@@ -138,7 +146,7 @@ export default function RockolaSaaS() {
     }
   }, [])
   
-  const barId = urlBarId || bar?.id || ''
+  const barId = barIdUrl || bar?.id || ''
 
   // ============= CARGAR DATOS =============
   useEffect(() => {
@@ -1271,4 +1279,13 @@ export default function RockolaSaaS() {
   }
 
   return null
+}
+
+// Export with Suspense wrapper for useSearchParams
+export default function RockolaSaaS() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <RockolaContent />
+    </Suspense>
+  )
 }
