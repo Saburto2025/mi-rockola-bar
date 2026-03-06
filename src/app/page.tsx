@@ -648,7 +648,8 @@ function RockolaContent() {
         <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-black to-blue-900 flex items-center justify-center">
           {/* DEBUG INFO */}
           <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs">
-            <p>DEBUG: modo={modo} | barId={barId || 'sin bar'}</p>
+            <p>🔧 V1.0.1 - DEBUG: modo={modo} | barId={barId || 'sin bar'}</p>
+            <p>URL params: modoUrl={modoUrl} | barIdUrl={barIdUrl || 'vacío'}</p>
           </div>
           <div className="text-center p-8">
             <div className="mb-8">
@@ -1057,9 +1058,17 @@ function RockolaContent() {
   // MODO SUPER ADMIN
   // ================================================================
   if (modo === 'superadmin') {
+    // DEBUG INFO
+    console.log('👑 SUPER ADMIN - modo:', modo, 'barId:', barId)
+    
     if (!isAuthed) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-red-900 flex items-center justify-center p-4">
+          {/* DEBUG INFO */}
+          <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs">
+            <p>🔧 V1.0.1 - SUPER ADMIN LOGIN</p>
+            <p>modo={modo} | barId={barId || 'sin bar'}</p>
+          </div>
           <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center">
             <Crown className="w-16 h-16 text-purple-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">👑 SUPER ADMIN</h2>
