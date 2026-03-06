@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 ROCKOLA SaaS - Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        .btn-tv { background: linear-gradient(to right, #dc2626, #991b1b); }
+        .btn-tv:hover { background: linear-gradient(to right, #ef4444, #b91c1c); }
+        .btn-admin { background: linear-gradient(to right, #eab308, #a16207); }
+        .btn-admin:hover { background: linear-gradient(to right, #facc15, #ca8a04); }
+        .btn-cliente { background: linear-gradient(to right, #22c55e, #15803d); }
+        .btn-cliente:hover { background: linear-gradient(to right, #4ade80, #16a34a); }
+        .btn-super { background: linear-gradient(to right, #9333ea, #6b21a8); }
+        .btn-super:hover { background: linear-gradient(to right, #a855f7, #7e22ce); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-900 via-black to-blue-900 min-h-screen">
+    
+    <!-- PANTALLA PRINCIPAL -->
+    <div id="pantalla-principal" class="flex flex-col items-center justify-center p-4">
+        <div class="text-center mb-8">
+            <div class="text-6xl mb-4">🎵</div>
+            <h1 class="text-4xl font-bold text-white mb-2">ROCKOLA SaaS</h1>
+            <p class="text-gray-300">Sistema de música colaborativa con créditos</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl w-full">
+            <button onclick="mostrarPantalla('tv')" class="btn-tv text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+                <div class="text-4xl mb-3">📺</div>
+                <h2 class="text-xl font-bold">MODO TV</h2>
+                <p class="text-sm opacity-80 mt-2">Pantalla del bar</p>
+            </button>
+
+            <button onclick="mostrarPantalla('admin')" class="btn-admin text-black p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+                <div class="text-4xl mb-3">👑</div>
+                <h2 class="text-xl font-bold">ADMIN BAR</h2>
+                <p class="text-sm opacity-80 mt-2">Dueño del bar</p>
+            </button>
+
+            <button onclick="mostrarPantalla('cliente')" class="btn-cliente text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+                <div class="text-4xl mb-3">🍻</div>
+                <h2 class="text-xl font-bold">CLIENTE</h2>
+                <p class="text-sm opacity-80 mt-2">Pedir canciones</p>
+            </button>
+
+            <button onclick="mostrarPantalla('superadmin')" class="btn-super text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+                <div class="text-4xl mb-3">🏢</div>
+                <h2 class="text-xl font-bold">SUPER ADMIN</h2>
+                <p class="text-sm opacity-80 mt-2">Dueño del software</p>
+            </button>
+        </div>
+
+        <div class="mt-8 text-center text-gray-400 text-sm">
+            <p>Escanea el QR desde tu celular para pedir música</p>
+            <div class="mt-4 bg-white p-4 rounded-lg inline-block">
+                <div class="w-32 h-32 bg-black grid grid-cols-7 grid-rows-7 gap-px p-2">
+                    <!-- Simulación de QR -->
+                    <script>
+                        const qr = document.currentScript.parentElement;
+                        for(let i=0; i<49; i++) {
+                            const cell = document.createElement('div');
+                            cell.className = Math.random() > 0.5 ? 'bg-white' : 'bg-black';
+                            qr.appendChild(cell);
+                        }
+                    </script>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANTALLA LOGIN ADMIN -->
+    <div id="pantalla-login-admin" class="hidden min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(to bottom right, #eab308, #ea580c);">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <div class="text-5xl mb-4 text-center">👑</div>
+            <h2 class="text-2xl font-bold text-center mb-6">Panel del Dueño</h2>
+            <input type="password" id="clave-admin" placeholder="Clave de administrador" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4">
+            <button onclick="verificarClave('admin', '1234')" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 rounded-xl">
+                ENTRAR
+            </button>
+            <p class="text-center text-gray-400 mt-4 text-sm">Clave: 1234</p>
+            <button onclick="mostrarPantalla('principal')" class="w-full mt-4 text-gray-500">← Volver</button>
+        </div>
+    </div>
+
+    <!-- PANTALLA LOGIN SUPER ADMIN -->
+    <div id="pantalla-login-superadmin" class="hidden min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(to bottom right, #9333ea, #581c87);">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <div class="text-5xl mb-4 text-center">🏢</div>
+            <h2 class="text-2xl font-bold text-center mb-6">Super Admin</h2>
+            <p class="text-center text-gray-500 mb-4">Dueño del Software SaaS</p>
+            <input type="password" id="clave-super" placeholder="Clave de Super Admin" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4">
+            <button onclick="verificarClave('superadmin', 'rockola2024')" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl">
+                ENTRAR
+            </button>
+            <p class="text-center text-gray-400 mt-4 text-sm">Clave: rockola2024</p>
+            <button onclick="mostrarPantalla('principal')" class="w-full mt-4 text-gray-500">← Volver</button>
+        </div>
+    </div>
+
+    <!-- PANTALLA TV -->
+    <div id="pantalla-tv" class="hidden min-h-screen bg-black text-white">
+        <div class="fixed top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-4 z-50 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">🎵</span>
+                <span class="text-2xl font-bold">Bar 2 de Enero</span>
+            </div>
+            <div class="bg-green-600 px-4 py-2 rounded-full text-xl font-bold">
+                💰 100 créditos
+            </div>
+        </div>
+
+        <div class="min-h-screen flex items-center justify-center p-4 pt-20">
+            <div class="text-center">
+                <div class="text-8xl mb-8 animate-pulse">🎵</div>
+                <h2 class="text-4xl font-bold mb-4">ROCKOLA LISTA</h2>
+                <p class="text-gray-400 text-xl">Esperando canciones...</p>
+                <div class="mt-12 bg-white p-6 rounded-xl inline-block">
+                    <p class="text-black font-bold">Escanea para pedir música</p>
+                    <div class="mt-4 w-32 h-32 bg-black mx-auto"></div>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="mostrarPantalla('principal')" class="fixed top-4 right-4 bg-gray-800 p-2 rounded-lg text-sm">
+            ← Volver
+        </button>
+    </div>
+
+    <!-- PANTALLA ADMIN (después de login) -->
+    <div id="pantalla-admin" class="hidden min-h-screen bg-gray-900 text-white">
+        <div class="bg-gradient-to-r from-yellow-600 to-yellow-700 p-4">
+            <div class="flex justify-between items-center max-w-4xl mx-auto">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">👑</span>
+                    <div>
+                        <h1 class="text-xl font-bold">PANEL ADMIN</h1>
+                        <p class="text-sm opacity-80">Bar 2 de Enero</p>
+                    </div>
+                </div>
+                <button onclick="mostrarPantalla('principal')" class="bg-black/20 px-4 py-2 rounded-lg">
+                    Cerrar sesión
+                </button>
+            </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto p-4 space-y-6">
+            <!-- Créditos -->
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">CRÉDITOS DISPONIBLES</p>
+                    <p class="text-3xl font-bold text-green-400">100</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">PRECIO COMPRA</p>
+                    <p class="text-3xl font-bold text-blue-400">$1.00</p>
+                    <p class="text-xs text-gray-500">Por crédito al proveedor</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">PRECIO VENTA</p>
+                    <p class="text-3xl font-bold text-yellow-400">$2.00</p>
+                    <p class="text-xs text-gray-500">Por crédito al cliente</p>
+                </div>
+            </div>
+
+            <!-- Vender créditos -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">💰 Vender Créditos a Clientes</h3>
+                <div class="flex gap-2 flex-wrap">
+                    <button class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 5 ($10)</button>
+                    <button class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 10 ($20)</button>
+                    <button class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 20 ($40)</button>
+                    <button class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 50 ($100)</button>
+                </div>
+            </div>
+
+            <!-- Buscador -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">🔍 Buscar Música (Solo canciones)</h3>
+                <div class="flex gap-2">
+                    <input type="text" placeholder="Artista - Canción..." class="flex-1 bg-gray-700 rounded-lg px-4 py-3">
+                    <button class="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg font-bold">BUSCAR</button>
+                </div>
+                <p class="text-sm text-green-400 mt-2">✓ Solo se mostrarán canciones de música</p>
+            </div>
+
+            <!-- Cola -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">🎵 Cola de Reproducción</h3>
+                <p class="text-gray-400 text-center py-4">No hay canciones en la cola</p>
+            </div>
+
+            <!-- Control TV -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">🎮 Control TV</h3>
+                <div class="flex gap-2">
+                    <button class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-bold">⏸️ Pausar</button>
+                    <button class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold">⏭️ Siguiente</button>
+                </div>
+            </div>
+
+            <!-- Reportes -->
+            <button onclick="mostrarPantalla('reportes')" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 p-4 rounded-xl font-bold">
+                📊 VER REPORTES Y EXPORTAR EXCEL
+            </button>
+        </div>
+    </div>
+
+    <!-- PANTALLA SUPER ADMIN -->
+    <div id="pantalla-superadmin" class="hidden min-h-screen bg-gray-900 text-white">
+        <div class="bg-gradient-to-r from-purple-600 to-purple-800 p-4">
+            <div class="flex justify-between items-center max-w-4xl mx-auto">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">🏢</span>
+                    <div>
+                        <h1 class="text-xl font-bold">SUPER ADMIN</h1>
+                        <p class="text-sm opacity-80">Panel del Proveedor SaaS</p>
+                    </div>
+                </div>
+                <button onclick="mostrarPantalla('principal')" class="bg-black/20 px-4 py-2 rounded-lg">
+                    Cerrar sesión
+                </button>
+            </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto p-4 space-y-6">
+            <div class="grid grid-cols-4 gap-4">
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">BARES ACTIVOS</p>
+                    <p class="text-3xl font-bold text-blue-400">1</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">CRÉDITOS VENDIDOS</p>
+                    <p class="text-3xl font-bold text-green-400">0</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">INGRESOS TOTALES</p>
+                    <p class="text-3xl font-bold text-yellow-400">$0.00</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">CANCIONES TOTALES</p>
+                    <p class="text-3xl font-bold text-purple-400">0</p>
+                </div>
+            </div>
+
+            <!-- Vender créditos -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">💰 Vender Créditos al Bar</h3>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="text-sm text-gray-400">Cantidad de créditos</label>
+                        <input type="number" value="100" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Precio por crédito ($)</label>
+                        <input type="number" step="0.01" value="1.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1">
+                    </div>
+                </div>
+                <button class="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black font-bold py-3 rounded-lg">
+                    💰 VENDER CRÉDITOS AL BAR
+                </button>
+            </div>
+
+            <!-- Precios -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">⚙️ Configurar Precios del Bar</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-sm text-gray-400">Precio compra (del proveedor)</label>
+                        <input type="number" step="0.01" value="1.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Precio venta (al cliente)</label>
+                        <input type="number" step="0.01" value="2.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1">
+                    </div>
+                </div>
+                <p class="text-sm text-gray-400 mt-2">
+                    Ganancia del bar: $1.00 por crédito (100%)
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANTALLA CLIENTE -->
+    <div id="pantalla-cliente" class="hidden min-h-screen" style="background: linear-gradient(to bottom right, #166534, #14532d);">
+        <div class="bg-black/30 p-4">
+            <div class="max-w-md mx-auto text-center">
+                <div class="text-3xl mb-2">🎵</div>
+                <h1 class="text-2xl font-bold">Bar 2 de Enero</h1>
+                <p class="text-green-300">🎵 ¡Pide tu canción favorita!</p>
+            </div>
+        </div>
+
+        <div class="max-w-md mx-auto p-4 space-y-6">
+            <div class="bg-white/10 rounded-xl p-4">
+                <label class="text-sm text-green-300 mb-2 block">Tu nombre</label>
+                <input type="text" placeholder="Ej: Mesa 5, Juan, etc." class="w-full bg-white/20 rounded-lg px-4 py-3 placeholder-white/50">
+            </div>
+
+            <div class="bg-white/10 rounded-xl p-4 text-center">
+                <p class="text-green-300 text-sm">MIS CRÉDITOS</p>
+                <p class="text-5xl font-bold">0</p>
+                <p class="text-sm text-white/60 mt-1">Cada canción cuesta 2 créditos</p>
+            </div>
+
+            <div class="bg-white/10 rounded-xl p-4">
+                <h3 class="font-bold mb-3">🔍 Buscar Canción</h3>
+                <div class="flex gap-2">
+                    <input type="text" placeholder="Artista - Canción..." class="flex-1 bg-white/20 rounded-lg px-4 py-3 placeholder-white/50">
+                    <button class="bg-green-500 hover:bg-green-400 px-4 rounded-lg font-bold">🔍</button>
+                </div>
+            </div>
+
+            <div class="bg-white/10 rounded-xl p-4">
+                <h3 class="font-bold mb-3">🎵 Cola de Reproducción</h3>
+                <p class="text-center text-white/60 py-4">No hay canciones en la cola</p>
+            </div>
+
+            <p class="text-center text-white/60 text-sm">
+                💡 Pídele créditos al dueño del bar para pedir canciones
+            </p>
+        </div>
+
+        <button onclick="mostrarPantalla('principal')" class="fixed bottom-4 right-4 bg-black/30 px-4 py-2 rounded-lg text-sm">
+            ← Volver
+        </button>
+    </div>
+
+    <!-- PANTALLA REPORTES -->
+    <div id="pantalla-reportes" class="hidden min-h-screen bg-gray-900 text-white">
+        <div class="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
+            <div class="flex justify-between items-center max-w-4xl mx-auto">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">📊</span>
+                    <h1 class="text-xl font-bold">REPORTES Y ANÁLISIS</h1>
+                </div>
+                <button onclick="mostrarPantalla('admin')" class="bg-black/20 px-4 py-2 rounded-lg">
+                    ← Volver
+                </button>
+            </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto p-4 space-y-6">
+            <!-- Filtros -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">📅 Filtrar por Fecha</h3>
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="text-sm text-gray-400">Desde</label>
+                        <input type="date" class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Hasta</label>
+                        <input type="date" class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Tipo</label>
+                        <select class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1">
+                            <option>Todos</option>
+                            <option>Compras</option>
+                            <option>Ventas</option>
+                            <option>Consumos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen -->
+            <div class="grid grid-cols-4 gap-4">
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">COMPRAS SOFTWARE</p>
+                    <p class="text-2xl font-bold text-blue-400">$0.00</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">VENTAS CLIENTES</p>
+                    <p class="text-2xl font-bold text-green-400">$0.00</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">CANCIONES</p>
+                    <p class="text-2xl font-bold text-purple-400">0</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">GANANCIA NETA</p>
+                    <p class="text-2xl font-bold text-green-400">$0.00</p>
+                </div>
+            </div>
+
+            <!-- Exportar -->
+            <button class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                📑 EXPORTAR A EXCEL
+            </button>
+
+            <!-- Tabla -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">📊 Detalle de Transacciones</h3>
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-700">
+                            <th class="py-2 text-left">Fecha</th>
+                            <th class="py-2 text-left">Tipo</th>
+                            <th class="py-2 text-left">Cantidad</th>
+                            <th class="py-2 text-left">Total</th>
+                            <th class="py-2 text-left">Cliente</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" class="text-center text-gray-400 py-8">
+                                No hay transacciones en el rango seleccionado
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Márgenes -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="font-bold mb-3">📈 Análisis de Márgenes</h3>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="bg-gray-700 p-4 rounded-lg">
+                        <p class="text-gray-400 text-sm">Precio Costo</p>
+                        <p class="text-2xl font-bold">$1.00</p>
+                        <p class="text-xs text-gray-500">Por crédito</p>
+                    </div>
+                    <div class="bg-gray-700 p-4 rounded-lg">
+                        <p class="text-gray-400 text-sm">Precio Venta</p>
+                        <p class="text-2xl font-bold">$2.00</p>
+                        <p class="text-xs text-gray-500">Por crédito</p>
+                    </div>
+                    <div class="bg-gray-700 p-4 rounded-lg">
+                        <p class="text-gray-400 text-sm">Margen</p>
+                        <p class="text-2xl font-bold text-green-400">100%</p>
+                        <p class="text-xs text-gray-500">Ganancia $1.00/crédito</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function mostrarPantalla(nombre) {
+            // Ocultar todas las pantallas
+            document.querySelectorAll('[id^="pantalla-"]').forEach(el => {
+                el.classList.add('hidden');
+            });
+            
+            // Mostrar la pantalla solicitada
+            if (nombre === 'admin') {
+                document.getElementById('pantalla-login-admin').classList.remove('hidden');
+            } else if (nombre === 'superadmin') {
+                document.getElementById('pantalla-login-superadmin').classList.remove('hidden');
+            } else {
+                document.getElementById('pantalla-' + nombre).classList.remove('hidden');
+            }
+        }
+
+        function verificarClave(tipo, claveCorrecta) {
+            const input = document.getElementById('clave-' + tipo);
+            if (input.value === claveCorrecta) {
+                document.getElementById('pantalla-login-' + tipo).classList.add('hidden');
+                document.getElementById('pantalla-' + tipo).classList.remove('hidden');
+            } else {
+                alert('Clave incorrecta');
+            }
+        }
+    </script>
+</body>
+</html>

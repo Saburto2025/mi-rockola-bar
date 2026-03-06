@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: rockola
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: bun install && bun run build
+    startCommand: node .next/standalone/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: BUN_VERSION
+        value: "1.3.4"
+      - key: PORT
+        value: "10000"

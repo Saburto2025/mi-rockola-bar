@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 ROCKOLA SaaS - Sistema Completo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; }
+        .hidden { display: none !important; }
+        .btn-tv { background: linear-gradient(to right, #dc2626, #991b1b); }
+        .btn-admin { background: linear-gradient(to right, #eab308, #a16207); }
+        .btn-cliente { background: linear-gradient(to right, #22c55e, #15803d); }
+        .btn-super { background: linear-gradient(to right, #9333ea, #6b21a8); }
+    </style>
+</head>
+<body>
+
+<!-- ============= PANTALLA PRINCIPAL ============= -->
+<div id="pantalla-principal" class="min-h-screen bg-gradient-to-br from-purple-900 via-black to-blue-900 flex flex-col items-center justify-center p-4">
+    <div class="text-center mb-8">
+        <div class="text-6xl mb-4">🎵</div>
+        <h1 class="text-4xl font-bold text-white mb-2">ROCKOLA SaaS</h1>
+        <p class="text-gray-300">Sistema de música colaborativa con créditos</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl w-full px-4">
+        <button onclick="mostrarPantalla('tv')" class="btn-tv text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+            <div class="text-4xl mb-3">📺</div>
+            <h2 class="text-xl font-bold">MODO TV</h2>
+            <p class="text-sm opacity-80 mt-2">Pantalla del bar</p>
+        </button>
+
+        <button onclick="mostrarPantalla('login-admin')" class="btn-admin text-black p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+            <div class="text-4xl mb-3">👑</div>
+            <h2 class="text-xl font-bold">ADMIN BAR</h2>
+            <p class="text-sm opacity-80 mt-2">Dueño del bar</p>
+        </button>
+
+        <button onclick="mostrarPantalla('cliente')" class="btn-cliente text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+            <div class="text-4xl mb-3">🍻</div>
+            <h2 class="text-xl font-bold">CLIENTE</h2>
+            <p class="text-sm opacity-80 mt-2">Pedir canciones</p>
+        </button>
+
+        <button onclick="mostrarPantalla('login-superadmin')" class="btn-super text-white p-6 rounded-2xl transition-all hover:scale-105 shadow-xl">
+            <div class="text-4xl mb-3">🏢</div>
+            <h2 class="text-xl font-bold">SUPER ADMIN</h2>
+            <p class="text-sm opacity-80 mt-2">Dueño del software</p>
+        </button>
+    </div>
+
+    <div class="mt-8 text-center text-gray-400 text-sm">
+        <p>Escanea el QR desde tu celular para pedir música</p>
+        <div class="mt-4 bg-white p-4 rounded-lg inline-block">
+            <svg height="120" width="120" viewBox="0 0 21 21">
+                <path fill="#FFFFFF" d="M0,0 h21v21H0z"/>
+                <path fill="#000000" d="M0 0h7v1H0zM9 0h1v1H9zM14,0 h7v1H14zM0 1h1v1H0zM6 1h1v1H6zM10 1h2v1H10zM14 1h1v1H14zM20,1 h1v1H20zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM8 2h5v1H8zM14 2h1v1H14zM16 2h3v1H16zM20,2 h1v1H20zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM8 3h3v1H8zM12 3h1v1H12zM14 3h1v1H14zM16 3h3v1H16zM20,3 h1v1H20zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM9 4h3v1H9zM14 4h1v1H14zM16 4h3v1H16zM20,4 h1v1H20zM0 5h1v1H0zM6 5h1v1H6zM9 5h1v1H9zM11 5h2v1H11zM14 5h1v1H14zM20,5 h1v1H20zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1H10zM12 6h1v1H12zM14,6 h7v1H14z"/>
+            </svg>
+        </div>
+    </div>
+</div>
+
+<!-- ============= LOGIN ADMIN ============= -->
+<div id="pantalla-login-admin" class="hidden min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(to bottom right, #eab308, #ea580c);">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div class="text-5xl mb-4 text-center">👑</div>
+        <h2 class="text-2xl font-bold text-center mb-6">Panel del Dueño</h2>
+        <input type="password" id="clave-admin" placeholder="Clave de administrador" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4" onkeypress="if(event.key==='Enter') verificarAdmin()">
+        <button onclick="verificarAdmin()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 rounded-xl">
+            ENTRAR
+        </button>
+        <p class="text-center text-gray-400 mt-4 text-sm">Clave: 1234</p>
+        <button onclick="mostrarPantalla('principal')" class="w-full mt-4 text-gray-500">← Volver</button>
+    </div>
+</div>
+
+<!-- ============= LOGIN SUPER ADMIN ============= -->
+<div id="pantalla-login-superadmin" class="hidden min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(to bottom right, #9333ea, #581c87);">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div class="text-5xl mb-4 text-center">🏢</div>
+        <h2 class="text-2xl font-bold text-center mb-6">Super Admin</h2>
+        <p class="text-center text-gray-500 mb-4">Dueño del Software SaaS</p>
+        <input type="password" id="clave-super" placeholder="Clave de Super Admin" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4" onkeypress="if(event.key==='Enter') verificarSuper()">
+        <button onclick="verificarSuper()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl">
+            ENTRAR
+        </button>
+        <p class="text-center text-gray-400 mt-4 text-sm">Clave: rockola2024</p>
+        <button onclick="mostrarPantalla('principal')" class="w-full mt-4 text-gray-500">← Volver</button>
+    </div>
+</div>
+
+<!-- ============= MODO TV ============= -->
+<div id="pantalla-tv" class="hidden min-h-screen bg-black text-white">
+    <div class="fixed top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-4 z-50 flex justify-between items-center">
+        <div class="flex items-center gap-4">
+            <span class="text-2xl">🎵</span>
+            <span class="text-2xl font-bold" id="tv-bar-nombre">Bar 2 de Enero</span>
+        </div>
+        <div class="bg-green-600 px-4 py-2 rounded-full text-xl font-bold">
+            💰 <span id="tv-creditos">100</span> créditos
+        </div>
+    </div>
+
+    <div class="min-h-screen flex items-center justify-center p-4 pt-20">
+        <div id="tv-reproductor" class="text-center w-full max-w-4xl">
+            <div class="text-8xl mb-8 animate-pulse">🎵</div>
+            <h2 class="text-4xl font-bold mb-4">ROCKOLA LISTA</h2>
+            <p class="text-gray-400 text-xl">Esperando canciones...</p>
+            <div class="mt-12 bg-white p-6 rounded-xl inline-block">
+                <p class="text-black font-bold">Escanea para pedir música</p>
+                <div class="mt-4 w-32 h-32 bg-black mx-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cola de reproducción -->
+    <div id="tv-cola" class="hidden fixed bottom-0 left-0 right-0 bg-black/90 p-4">
+        <div class="flex gap-4 overflow-x-auto pb-2">
+            <span class="text-gray-400 whitespace-nowrap">SIGUIENTES:</span>
+            <div id="tv-cola-lista"></div>
+        </div>
+    </div>
+
+    <button onclick="mostrarPantalla('principal')" class="fixed top-4 right-4 bg-gray-800 p-2 rounded-lg text-sm">
+        ← Volver
+    </button>
+</div>
+
+<!-- ============= PANEL ADMIN ============= -->
+<div id="pantalla-admin" class="hidden min-h-screen bg-gray-900 text-white">
+    <div class="bg-gradient-to-r from-yellow-600 to-yellow-700 p-4">
+        <div class="flex justify-between items-center max-w-4xl mx-auto">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">👑</span>
+                <div>
+                    <h1 class="text-xl font-bold">PANEL ADMIN</h1>
+                    <p class="text-sm opacity-80" id="admin-bar-nombre">Bar 2 de Enero</p>
+                </div>
+            </div>
+            <button onclick="mostrarPantalla('principal')" class="bg-black/20 px-4 py-2 rounded-lg">
+                Cerrar sesión
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto p-4 space-y-6">
+        <!-- Créditos -->
+        <div class="grid grid-cols-3 gap-4">
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">CRÉDITOS DISPONIBLES</p>
+                <p class="text-3xl font-bold text-green-400" id="admin-creditos">100</p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">PRECIO COMPRA</p>
+                <p class="text-3xl font-bold text-blue-400">$<span id="admin-precio-compra">1.00</span></p>
+                <p class="text-xs text-gray-500">Por crédito al proveedor</p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">PRECIO VENTA</p>
+                <p class="text-3xl font-bold text-yellow-400">$<span id="admin-precio-venta">2.00</span></p>
+                <p class="text-xs text-gray-500">Por crédito al cliente</p>
+            </div>
+        </div>
+
+        <!-- Vender créditos -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">💰 Vender Créditos a Clientes</h3>
+            <div class="flex gap-2 flex-wrap">
+                <button onclick="venderCreditos(5)" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 5 ($10)</button>
+                <button onclick="venderCreditos(10)" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 10 ($20)</button>
+                <button onclick="venderCreditos(20)" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 20 ($40)</button>
+                <button onclick="venderCreditos(50)" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold">Vender 50 ($100)</button>
+            </div>
+        </div>
+
+        <!-- Buscador de música -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">🔍 Buscar Música (Solo canciones)</h3>
+            <div class="flex gap-2">
+                <input type="text" id="busqueda-musica" placeholder="Artista - Canción..." class="flex-1 bg-gray-700 rounded-lg px-4 py-3 text-white" onkeypress="if(event.key==='Enter') buscarMusica()">
+                <button onclick="buscarMusica()" class="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg font-bold">BUSCAR</button>
+            </div>
+            <p class="text-sm text-green-400 mt-2">✓ Solo se mostrarán canciones de música</p>
+            <div id="resultados-musica" class="grid grid-cols-2 gap-2 mt-4 max-h-60 overflow-y-auto"></div>
+        </div>
+
+        <!-- Pendientes de aprobación -->
+        <div id="seccion-pendientes" class="hidden bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">⏳ Pendientes de Aprobación</h3>
+            <div id="lista-pendientes" class="space-y-2"></div>
+        </div>
+
+        <!-- Cola de reproducción -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">🎵 Cola de Reproducción</h3>
+            <div id="reproduciendo-actual" class="hidden bg-yellow-600 p-3 rounded-lg mb-3 flex items-center gap-3">
+                <div class="w-12 h-12 bg-yellow-500 rounded flex items-center justify-center">
+                    <span class="text-2xl">▶️</span>
+                </div>
+                <div class="flex-1">
+                    <p class="font-bold truncate" id="cancion-actual-titulo">-</p>
+                    <p class="text-sm opacity-80">Reproduciendo</p>
+                </div>
+            </div>
+            <div id="cola-reproduccion" class="space-y-2 max-h-40 overflow-y-auto">
+                <p class="text-gray-400 text-center py-4">No hay canciones en la cola</p>
+            </div>
+        </div>
+
+        <!-- Control TV -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">🎮 Control TV</h3>
+            <div class="flex gap-2">
+                <button onclick="togglePausa()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-bold" id="btn-pausa">⏸️ Pausar</button>
+                <button onclick="siguienteCancion()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold">⏭️ Siguiente</button>
+            </div>
+        </div>
+
+        <!-- Reportes -->
+        <button onclick="mostrarPantalla('reportes')" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 p-4 rounded-xl font-bold">
+            📊 VER REPORTES Y EXPORTAR EXCEL
+        </button>
+    </div>
+</div>
+
+<!-- ============= SUPER ADMIN ============= -->
+<div id="pantalla-superadmin" class="hidden min-h-screen bg-gray-900 text-white">
+    <div class="bg-gradient-to-r from-purple-600 to-purple-800 p-4">
+        <div class="flex justify-between items-center max-w-4xl mx-auto">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🏢</span>
+                <div>
+                    <h1 class="text-xl font-bold">SUPER ADMIN</h1>
+                    <p class="text-sm opacity-80">Panel del Proveedor SaaS</p>
+                </div>
+            </div>
+            <button onclick="mostrarPantalla('principal')" class="bg-black/20 px-4 py-2 rounded-lg">
+                Cerrar sesión
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto p-4 space-y-6">
+        <div class="grid grid-cols-4 gap-4">
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">BARES ACTIVOS</p>
+                <p class="text-3xl font-bold text-blue-400">1</p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">CRÉDITOS VENDIDOS</p>
+                <p class="text-3xl font-bold text-green-400" id="super-creditos-vendidos">0</p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">INGRESOS TOTALES</p>
+                <p class="text-3xl font-bold text-yellow-400">$<span id="super-ingresos">0.00</span></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">CANCIONES</p>
+                <p class="text-3xl font-bold text-purple-400" id="super-canciones">0</p>
+            </div>
+        </div>
+
+        <!-- Vender créditos al bar -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">💰 Vender Créditos al Bar</h3>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="text-sm text-gray-400">Cantidad de créditos</label>
+                    <input type="number" id="cantidad-vender" value="100" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1 text-white">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Precio por crédito ($)</label>
+                    <input type="number" id="precio-vender" step="0.01" value="1.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1 text-white">
+                </div>
+            </div>
+            <button onclick="venderAlBar()" class="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black font-bold py-3 rounded-lg">
+                💰 VENDER CRÉDITOS AL BAR
+            </button>
+        </div>
+
+        <!-- Configurar precios -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">⚙️ Configurar Precios del Bar</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm text-gray-400">Precio compra (del proveedor)</label>
+                    <input type="number" id="config-precio-compra" step="0.01" value="1.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1 text-white">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Precio venta (al cliente)</label>
+                    <input type="number" id="config-precio-venta" step="0.01" value="2.00" class="w-full bg-gray-700 rounded-lg px-4 py-3 mt-1 text-white">
+                </div>
+            </div>
+            <button onclick="guardarPrecios()" class="mt-4 bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold">Guardar Precios</button>
+            <p class="text-sm text-gray-400 mt-2">
+                Ganancia del bar: $<span id="margen-bar">1.00</span> por crédito (<span id="margen-porcentaje">100</span>%)
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- ============= CLIENTE ============= -->
+<div id="pantalla-cliente" class="hidden min-h-screen" style="background: linear-gradient(to bottom right, #166534, #14532d);">
+    <div class="bg-black/30 p-4">
+        <div class="max-w-md mx-auto text-center">
+            <div class="text-3xl mb-2">🎵</div>
+            <h1 class="text-2xl font-bold" id="cliente-bar-nombre">Bar 2 de Enero</h1>
+            <p class="text-green-300">🎵 ¡Pide tu canción favorita!</p>
+        </div>
+    </div>
+
+    <div class="max-w-md mx-auto p-4 space-y-6">
+        <div class="bg-white/10 rounded-xl p-4">
+            <label class="text-sm text-green-300 mb-2 block">Tu nombre</label>
+            <input type="text" id="nombre-cliente" placeholder="Ej: Mesa 5, Juan, etc." class="w-full bg-white/20 rounded-lg px-4 py-3 placeholder-white/50 text-white">
+        </div>
+
+        <div class="bg-white/10 rounded-xl p-4 text-center">
+            <p class="text-green-300 text-sm">MIS CRÉDITOS</p>
+            <p class="text-5xl font-bold" id="cliente-creditos">0</p>
+            <p class="text-sm text-white/60 mt-1">Cada canción cuesta <span id="cliente-precio">2</span> créditos</p>
+        </div>
+
+        <div class="bg-white/10 rounded-xl p-4">
+            <h3 class="font-bold mb-3">🔍 Buscar Canción</h3>
+            <div class="flex gap-2">
+                <input type="text" id="busqueda-cliente" placeholder="Artista - Canción..." class="flex-1 bg-white/20 rounded-lg px-4 py-3 placeholder-white/50 text-white" onkeypress="if(event.key==='Enter') buscarMusicaCliente()">
+                <button onclick="buscarMusicaCliente()" class="bg-green-500 hover:bg-green-400 px-4 rounded-lg font-bold">🔍</button>
+            </div>
+            <div id="resultados-cliente" class="space-y-2 mt-4 max-h-60 overflow-y-auto"></div>
+        </div>
+
+        <div class="bg-white/10 rounded-xl p-4">
+            <h3 class="font-bold mb-3">🎵 Cola de Reproducción</h3>
+            <div id="cola-cliente" class="space-y-2">
+                <p class="text-center text-white/60 py-4">No hay canciones en la cola</p>
+            </div>
+        </div>
+
+        <p class="text-center text-white/60 text-sm">
+            💡 Pídele créditos al dueño del bar para pedir canciones
+        </p>
+    </div>
+
+    <button onclick="mostrarPantalla('principal')" class="fixed bottom-4 right-4 bg-black/30 px-4 py-2 rounded-lg text-sm">
+        ← Volver
+    </button>
+</div>
+
+<!-- ============= REPORTES ============= -->
+<div id="pantalla-reportes" class="hidden min-h-screen bg-gray-900 text-white">
+    <div class="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
+        <div class="flex justify-between items-center max-w-4xl mx-auto">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">📊</span>
+                <h1 class="text-xl font-bold">REPORTES Y ANÁLISIS</h1>
+            </div>
+            <button onclick="mostrarPantalla('admin')" class="bg-black/20 px-4 py-2 rounded-lg">
+                ← Volver
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto p-4 space-y-6">
+        <!-- Filtros -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">📅 Filtrar por Fecha</h3>
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="text-sm text-gray-400">Desde</label>
+                    <input type="date" id="fecha-inicio" class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1 text-white">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Hasta</label>
+                    <input type="date" id="fecha-fin" class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1 text-white">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Tipo</label>
+                    <select id="tipo-reporte" class="w-full bg-gray-700 rounded-lg px-4 py-2 mt-1 text-white">
+                        <option value="todos">Todos</option>
+                        <option value="compra">Compras</option>
+                        <option value="venta">Ventas</option>
+                        <option value="consumo">Consumos</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen -->
+        <div class="grid grid-cols-4 gap-4">
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">COMPRAS SOFTWARE</p>
+                <p class="text-2xl font-bold text-blue-400">$<span id="reporte-compras">0.00</span></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">VENTAS CLIENTES</p>
+                <p class="text-2xl font-bold text-green-400">$<span id="reporte-ventas">0.00</span></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">CANCIONES</p>
+                <p class="text-2xl font-bold text-purple-400" id="reporte-canciones">0</p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4">
+                <p class="text-gray-400 text-sm">GANANCIA NETA</p>
+                <p class="text-2xl font-bold text-green-400">$<span id="reporte-ganancia">0.00</span></p>
+            </div>
+        </div>
+
+        <!-- Exportar -->
+        <button onclick="exportarExcel()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold flex items-center justify-center gap-2">
+            📑 EXPORTAR A EXCEL (CSV)
+        </button>
+
+        <!-- Tabla -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">📊 Detalle de Transacciones</h3>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th class="py-2 text-left">Fecha</th>
+                        <th class="py-2 text-left">Tipo</th>
+                        <th class="py-2 text-left">Cantidad</th>
+                        <th class="py-2 text-left">Total</th>
+                        <th class="py-2 text-left">Cliente</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-transacciones">
+                    <tr>
+                        <td colspan="5" class="text-center text-gray-400 py-8">
+                            No hay transacciones en el rango seleccionado
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Márgenes -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-bold mb-3">📈 Análisis de Márgenes</h3>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-gray-700 p-4 rounded-lg">
+                    <p class="text-gray-400 text-sm">Precio Costo</p>
+                    <p class="text-2xl font-bold">$<span id="margen-costo">1.00</span></p>
+                    <p class="text-xs text-gray-500">Por crédito</p>
+                </div>
+                <div class="bg-gray-700 p-4 rounded-lg">
+                    <p class="text-gray-400 text-sm">Precio Venta</p>
+                    <p class="text-2xl font-bold">$<span id="margen-venta">2.00</span></p>
+                    <p class="text-xs text-gray-500">Por crédito</p>
+                </div>
+                <div class="bg-gray-700 p-4 rounded-lg">
+                    <p class="text-gray-400 text-sm">Margen</p>
+                    <p class="text-2xl font-bold text-green-400" id="margen-porc">100%</p>
+                    <p class="text-xs text-gray-500">Ganancia $<span id="margen-ganancia">1.00</span>/crédito</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============= DATOS GLOBALES =============
+let datos = {
+    bar: {
+        id: "7b2fc122-93fa-4311-aaf9-184f0c111de1",
+        nombre: "Bar 2 de Enero",
+        creditos: 100,
+        precioCompra: 1.00,
+        precioVenta: 2.00
+    },
+    transacciones: [],
+    cola: [],
+    cancionActual: null,
+    pausado: false
+};
+
+// Cargar datos guardados
+function cargarDatos() {
+    const guardado = localStorage.getItem('rockola_datos');
+    if (guardado) {
+        datos = JSON.parse(guardado);
+    }
+}
+
+// Guardar datos
+function guardarDatos() {
+    localStorage.setItem('rockola_datos', JSON.stringify(datos));
+}
+
+// ============= NAVEGACIÓN =============
+function mostrarPantalla(id) {
+    document.querySelectorAll('[id^="pantalla-"]').forEach(el => el.classList.add('hidden'));
+    document.getElementById('pantalla-' + id).classList.remove('hidden');
+    
+    if (id === 'admin') actualizarAdmin();
+    if (id === 'superadmin') actualizarSuper();
+    if (id === 'cliente') actualizarCliente();
+    if (id === 'tv') actualizarTV();
+    if (id === 'reportes') actualizarReportes();
+}
+
+// ============= VERIFICACIÓN DE CLAVES =============
+function verificarAdmin() {
+    const clave = document.getElementById('clave-admin').value;
+    if (clave === '1234') {
+        mostrarPantalla('admin');
+    } else {
+        alert('❌ Clave incorrecta');
+    }
+}
+
+function verificarSuper() {
+    const clave = document.getElementById('clave-super').value;
+    if (clave === 'rockola2024') {
+        mostrarPantalla('superadmin');
+    } else {
+        alert('❌ Clave incorrecta');
+    }
+}
+
+// ============= FUNCIONES ADMIN =============
+function actualizarAdmin() {
+    document.getElementById('admin-creditos').textContent = datos.bar.creditos;
+    document.getElementById('admin-precio-compra').textContent = datos.bar.precioCompra.toFixed(2);
+    document.getElementById('admin-precio-venta').textContent = datos.bar.precioVenta.toFixed(2);
+    actualizarCola();
+}
+
+function venderCreditos(cantidad) {
+    if (cantidad > datos.bar.creditos) {
+        alert('❌ No tienes suficientes créditos');
+        return;
+    }
+    const cliente = prompt('Nombre del cliente:');
+    if (!cliente) return;
+    
+    datos.bar.creditos -= cantidad;
+    agregarTransaccion('venta_cliente', cantidad, datos.bar.precioVenta, cliente);
+    guardarDatos();
+    actualizarAdmin();
+    alert(`✅ Vendidos ${cantidad} créditos a ${cliente}\nTotal: $${(cantidad * datos.bar.precioVenta).toFixed(2)}`);
+}
+
+function agregarTransaccion(tipo, cantidad, precio, cliente = '-') {
+    datos.transacciones.unshift({
+        id: Date.now(),
+        tipo,
+        cantidad,
+        precio,
+        total: cantidad * precio,
+        cliente,
+        fecha: new Date().toISOString()
+    });
+}
+
+// ============= BÚSQUEDA YOUTUBE =============
+async function buscarMusica() {
+    const query = document.getElementById('busqueda-musica').value;
+    if (!query) return;
+    
+    const apiKey = 'AIzaSyC2JJqbZUDOkjBOzyU3xE6yJFoCJh1a6JY';
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(query + ' music song')}&type=video&videoCategoryId=10&key=${apiKey}`;
+    
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        mostrarResultados(data.items || [], 'admin');
+    } catch (e) {
+        alert('❌ Error al buscar. Verifica tu conexión.');
+    }
+}
+
+async function buscarMusicaCliente() {
+    const query = document.getElementById('busqueda-cliente').value;
+    if (!query) return;
+    
+    const apiKey = 'AIzaSyC2JJqbZUDOkjBOzyU3xE6yJFoCJh1a6JY';
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(query + ' music song')}&type=video&videoCategoryId=10&key=${apiKey}`;
+    
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        mostrarResultados(data.items || [], 'cliente');
+    } catch (e) {
+        alert('❌ Error al buscar. Verifica tu conexión.');
+    }
+}
+
+function mostrarResultados(videos, modo) {
+    const container = modo === 'admin' ? 
+        document.getElementById('resultados-musica') : 
+        document.getElementById('resultados-cliente');
+    
+    container.innerHTML = videos.map(v => `
+        <div onclick="${modo === 'admin' ? `agregarComoAdmin('${v.id.videoId}', '${v.snippet.title.replace(/'/g, "\\'")}', '${v.snippet.thumbnails.default.url}')` : `pedirCancion('${v.id.videoId}', '${v.snippet.title.replace(/'/g, "\\'")}', '${v.snippet.thumbnails.default.url}')`}" 
+             class="bg-gray-700 p-2 rounded-lg flex gap-2 cursor-pointer hover:bg-gray-600">
+            <img src="${v.snippet.thumbnails.default.url}" class="w-16 h-12 rounded object-cover">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm truncate">${v.snippet.title}</p>
+                <p class="text-xs text-green-400">✓ Música verificada</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+function agregarComoAdmin(videoId, titulo, thumbnail) {
+    datos.cola.push({
+        id: Date.now(),
+        videoId,
+        titulo,
+        thumbnail,
+        estado: 'aprobada',
+        solicitadoPor: 'Admin'
+    });
+    guardarDatos();
+    actualizarAdmin();
+    alert('✅ Canción agregada a la cola');
+}
+
+function pedirCancion(videoId, titulo, thumbnail) {
+    const precio = datos.bar.precioVenta;
+    const creditosCliente = parseInt(document.getElementById('cliente-creditos').textContent);
+    
+    if (creditosCliente < precio) {
+        alert(`❌ Necesitas ${precio} créditos. Pídele al dueño del bar.`);
+        return;
+    }
+    
+    document.getElementById('cliente-creditos').textContent = creditosCliente - precio;
+    datos.cola.push({
+        id: Date.now(),
+        videoId,
+        titulo,
+        thumbnail,
+        estado: 'pendiente',
+        solicitadoPor: document.getElementById('nombre-cliente').value || 'Cliente'
+    });
+    guardarDatos();
+    alert('✅ Canción enviada. Espera aprobación del dueño.');
+}
+
+// ============= COLA DE REPRODUCCIÓN =============
+function actualizarCola() {
+    const pendientes = datos.cola.filter(c => c.estado === 'pendiente');
+    const cola = datos.cola.filter(c => c.estado === 'aprobada');
+    
+    // Pendientes
+    const seccionPendientes = document.getElementById('seccion-pendientes');
+    const listaPendientes = document.getElementById('lista-pendientes');
+    
+    if (pendientes.length > 0) {
+        seccionPendientes.classList.remove('hidden');
+        listaPendientes.innerHTML = pendientes.map(c => `
+            <div class="bg-gray-700 p-3 rounded-lg flex items-center gap-3">
+                <img src="${c.thumbnail}" class="w-12 h-12 rounded">
+                <div class="flex-1 min-w-0">
+                    <p class="font-medium truncate">${c.titulo}</p>
+                    <p class="text-sm text-gray-400">Por: ${c.solicitadoPor}</p>
+                </div>
+                <button onclick="aprobar(${c.id})" class="bg-green-600 hover:bg-green-500 p-2 rounded-lg">✓</button>
+                <button onclick="rechazar(${c.id})" class="bg-red-600 hover:bg-red-500 p-2 rounded-lg">✗</button>
+            </div>
+        `).join('');
+    } else {
+        seccionPendientes.classList.add('hidden');
+    }
+    
+    // Cola
+    const colaContainer = document.getElementById('cola-reproduccion');
+    if (cola.length > 0) {
+        colaContainer.innerHTML = cola.map((c, i) => `
+            <div class="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
+                <span class="text-gray-400 w-6">${i + 1}</span>
+                <img src="${c.thumbnail}" class="w-10 h-10 rounded">
+                <p class="text-sm truncate flex-1">${c.titulo}</p>
+                <button onclick="eliminarCola(${c.id})" class="text-red-400 p-1">🗑️</button>
+            </div>
+        `).join('');
+    } else {
+        colaContainer.innerHTML = '<p class="text-gray-400 text-center py-4">No hay canciones en la cola</p>';
+    }
+}
+
+function aprobar(id) {
+    const cancion = datos.cola.find(c => c.id === id);
+    if (cancion) {
+        cancion.estado = 'aprobada';
+        guardarDatos();
+        actualizarCola();
+    }
+}
+
+function rechazar(id) {
+    datos.cola = datos.cola.filter(c => c.id !== id);
+    guardarDatos();
+    actualizarCola();
+}
+
+function eliminarCola(id) {
+    datos.cola = datos.cola.filter(c => c.id !== id);
+    guardarDatos();
+    actualizarCola();
+}
+
+function togglePausa() {
+    datos.pausado = !datos.pausado;
+    document.getElementById('btn-pausa').textContent = datos.pausado ? '▶️ Reanudar' : '⏸️ Pausar';
+}
+
+function siguienteCancion() {
+    const cola = datos.cola.filter(c => c.estado === 'aprobada');
+    if (cola.length > 0) {
+        datos.cancionActual = cola[0];
+        datos.cola = datos.cola.filter(c => c.id !== cola[0].id);
+        guardarDatos();
+        actualizarCola();
+        alert(`▶️ Reproduciendo: ${datos.cancionActual.titulo}`);
+    }
+}
+
+// ============= SUPER ADMIN =============
+function actualizarSuper() {
+    const compras = datos.transacciones.filter(t => t.tipo === 'compra_software');
+    document.getElementById('super-creditos-vendidos').textContent = compras.reduce((a, t) => a + t.cantidad, 0);
+    document.getElementById('super-ingresos').textContent = compras.reduce((a, t) => a + t.total, 0).toFixed(2);
+    document.getElementById('super-canciones').textContent = datos.transacciones.filter(t => t.tipo === 'consumo').length;
+}
+
+function venderAlBar() {
+    const cantidad = parseInt(document.getElementById('cantidad-vender').value);
+    const precio = parseFloat(document.getElementById('precio-vender').value);
+    
+    if (cantidad > 0 && precio > 0) {
+        datos.bar.creditos += cantidad;
+        agregarTransaccion('compra_software', cantidad, precio, 'Bar');
+        guardarDatos();
+        actualizarSuper();
+        alert(`✅ Vendidos ${cantidad} créditos al bar\nTotal: $${(cantidad * precio).toFixed(2)}`);
+    }
+}
+
+function guardarPrecios() {
+    datos.bar.precioCompra = parseFloat(document.getElementById('config-precio-compra').value);
+    datos.bar.precioVenta = parseFloat(document.getElementById('config-precio-venta').value);
+    
+    const margen = datos.bar.precioVenta - datos.bar.precioCompra;
+    const porcentaje = ((margen / datos.bar.precioCompra) * 100).toFixed(0);
+    
+    document.getElementById('margen-bar').textContent = margen.toFixed(2);
+    document.getElementById('margen-porcentaje').textContent = porcentaje;
+    
+    guardarDatos();
+    alert('✅ Precios actualizados');
+}
+
+// ============= CLIENTE =============
+function actualizarCliente() {
+    document.getElementById('cliente-precio').textContent = datos.bar.precioVenta;
+}
+
+// ============= TV =============
+function actualizarTV() {
+    document.getElementById('tv-creditos').textContent = datos.bar.creditos;
+}
+
+// ============= REPORTES =============
+function actualizarReportes() {
+    const transacciones = datos.transacciones;
+    
+    const compras = transacciones.filter(t => t.tipo === 'compra_software').reduce((a, t) => a + t.total, 0);
+    const ventas = transacciones.filter(t => t.tipo === 'venta_cliente').reduce((a, t) => a + t.total, 0);
+    const canciones = transacciones.filter(t => t.tipo === 'consumo').length;
+    const ganancia = ventas - compras;
+    
+    document.getElementById('reporte-compras').textContent = compras.toFixed(2);
+    document.getElementById('reporte-ventas').textContent = ventas.toFixed(2);
+    document.getElementById('reporte-canciones').textContent = canciones;
+    document.getElementById('reporte-ganancia').textContent = ganancia.toFixed(2);
+    
+    // Márgenes
+    document.getElementById('margen-costo').textContent = datos.bar.precioCompra.toFixed(2);
+    document.getElementById('margen-venta').textContent = datos.bar.precioVenta.toFixed(2);
+    document.getElementById('margen-porc').textContent = ((datos.bar.precioVenta - datos.bar.precioCompra) / datos.bar.precioCompra * 100).toFixed(0) + '%';
+    document.getElementById('margen-ganancia').textContent = (datos.bar.precioVenta - datos.bar.precioCompra).toFixed(2);
+    
+    // Tabla
+    const tbody = document.getElementById('tabla-transacciones');
+    if (transacciones.length > 0) {
+        tbody.innerHTML = transacciones.slice(0, 20).map(t => `
+            <tr class="border-b border-gray-700">
+                <td class="py-2">${new Date(t.fecha).toLocaleString()}</td>
+                <td class="py-2"><span class="px-2 py-1 rounded text-xs ${t.tipo === 'compra_software' ? 'bg-blue-600' : t.tipo === 'venta_cliente' ? 'bg-green-600' : 'bg-purple-600'}">${t.tipo === 'compra_software' ? 'Compra' : t.tipo === 'venta_cliente' ? 'Venta' : 'Consumo'}</span></td>
+                <td class="py-2">${t.cantidad}</td>
+                <td class="py-2 font-bold">$${t.total.toFixed(2)}</td>
+                <td class="py-2">${t.cliente}</td>
+            </tr>
+        `).join('');
+    }
+}
+
+function exportarExcel() {
+    let csv = 'Fecha,Tipo,Cantidad,Precio Unitario,Total,Cliente\n';
+    datos.transacciones.forEach(t => {
+        csv += `${new Date(t.fecha).toLocaleString()},${t.tipo},${t.cantidad},$${t.precio.toFixed(2)},$${t.total.toFixed(2)},${t.cliente}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte_rockola_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+}
+
+// ============= INICIALIZACIÓN =============
+document.addEventListener('DOMContentLoaded', () => {
+    cargarDatos();
+    
+    // Fechas por defecto en reportes
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('fecha-inicio').value = hoy;
+    document.getElementById('fecha-fin').value = hoy;
+});
+</script>
+
+</body>
+</html>
