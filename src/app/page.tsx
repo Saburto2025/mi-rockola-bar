@@ -369,12 +369,12 @@ function RockolaContent() {
     }
   }
 
-  // ============= BÚSQUEDA YOUTUBE - SOLO CANCIONES =============
+  // ============= BÚSQUEDA YOUTUBE - SOLO CANCIONES OFICIALES =============
   const buscarVideos = async () => {
     if (!busqueda.trim()) return
     setBuscando(true)
     try {
-      // Búsqueda con exclusiones fuertes para karaokes y contenido no deseado
+      // Búsqueda optimizada para música ORIGINAL
       const exclusiones = [
         '-karaoke',
         '-karaokes',
@@ -396,15 +396,31 @@ function RockolaContent() {
         '-entrevista',
         '-tutorial',
         '-cover',
+        '-covers',
         '-tributo',
         '-parodia',
-        '-parody'
+        '-parody',
+        '-react',
+        '-reaction',
+        '-remix',
+        '-"version cumbia"',
+        '-"version salsa"',
+        '-"en vivo"',
+        '-live',
+        '-acoustic',
+        '-acustico',
+        '- unplugged',
+        '-"letra cantada"',
+        '-"cancion original"',
+        '-fanmade',
+        '-fan made'
       ].join(' ')
       
-      const busquedaSimple = `${busqueda} ${exclusiones}`
+      // Agregar "official" para priorizar videos oficiales
+      const busquedaOficial = `${busqueda} official ${exclusiones}`
       
       // Buscar videos en YouTube (solo categoría música)
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${encodeURIComponent(busquedaSimple)}&type=video&videoCategoryId=10&key=${YOUTUBE_API_KEY}`)
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${encodeURIComponent(busquedaOficial)}&type=video&videoCategoryId=10&key=${YOUTUBE_API_KEY}`)
       const data = await res.json()
       
       if (data.items?.length > 0) {
@@ -429,16 +445,38 @@ function RockolaContent() {
             const titulo = v.snippet.title || ''
             const canal = v.snippet.channelTitle || ''
             const tituloLower = titulo.toLowerCase()
+            const canalLower = canal.toLowerCase()
             
-            // Filtrar karaokes y otros contenidos no deseados en el título
+            // Filtrar karaokes y otros contenidos no deseados
             const palabrasProhibidas = [
               'karaoke', 'karaokes', 'sing along', 'letra lyrics', 'letra y lyrics',
               'con letra', 'instrumental', 'backing track', 'sin voz', 'no vocals',
               'full album', 'complete album', 'playlist', 'mix completo',
-              'podcast', 'entrevista', 'tutorial', 'cover by', 'tribute to',
-              'parodia', 'parody', 'react', 'reaction'
+              'podcast', 'entrevista', 'tutorial', 'cover by', 'cover de',
+              'tribute to', 'tributo a', 'parodia', 'parody', 'react', 'reaction',
+              'remix', 'version cumbia', 'version salsa', 'en vivo', 'acoustic',
+              'acustico', 'unplugged', 'letra cantada', 'fanmade', 'fan made',
+              'letra animada', 'video letra'
             ]
+            
+            // Canales que suelen subir contenido no original
+            const canalesProhibidos = [
+              'karaoke', 'sing along', 'lyrics', 'letra', 'cover', 'tribute',
+              'parodia', 'fan', 'acoustic'
+            ]
+            
             const tienePalabraProhibida = palabrasProhibidas.some(p => tituloLower.includes(p))
+            const esCanalProhibido = canalesProhibidos.some(c => canalLower.includes(c))
+            
+            // Priorizar canales oficiales
+            const esCanalOficial = 
+              canalLower.includes('official') || 
+              canalLower.includes('oficial') ||
+              canalLower.includes('vevo') ||
+              canalLower.includes('records') ||
+              canalLower.includes('music') ||
+              canalLower.includes('tv') ||
+              canalLower.includes('artist')
             
             // Separar artista y canción del título
             let artista = canal
@@ -468,18 +506,28 @@ function RockolaContent() {
               duracionMinutos,
               artista,
               cancion,
-              tienePalabraProhibida
+              tienePalabraProhibida,
+              esCanalOficial,
+              esCanalProhibido
             }
           })
           .filter((v: any) => {
             if (!v) return false
             // Filtrar palabras prohibidas
             if (v.tienePalabraProhibida) return false
+            // Filtrar canales no oficiales (si no es canal oficial y es canal prohibido)
+            if (!v.esCanalOficial && v.esCanalProhibido) return false
             // Filtrar videos muy largos (más de 12 min)
             if (v.duracionMinutos > 12) return false
             // Filtrar videos muy cortos (menos de 1.5 min)
             if (v.duracionMinutos < 1.5) return false
             return true
+          })
+          // Ordenar: canales oficiales primero
+          .sort((a: any, b: any) => {
+            if (a.esCanalOficial && !b.esCanalOficial) return -1
+            if (!a.esCanalOficial && b.esCanalOficial) return 1
+            return 0
           })
           .slice(0, 15)
         
@@ -1084,7 +1132,7 @@ function RockolaContent() {
             <div className="flex items-center gap-3">
               <Crown className="w-6 h-6" />
               <div>
-                <h1 className="text-xl font-black">👑 SUPER ADMIN <span className="text-xs bg-green-500 px-2 py-0.5 rounded-full">V1.0.3</span></h1>
+                <h1 className="text-xl font-black">👑 SUPER ADMIN <span className="text-xs bg-green-500 px-2 py-0.5 rounded-full">V1.0.4</span></h1>
                 <p className="text-xs opacity-80">Panel de Control Global</p>
               </div>
             </div>
