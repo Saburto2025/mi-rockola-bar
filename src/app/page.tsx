@@ -1,1449 +1,1135 @@
-'use client'
+'use client';
 
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
-import YouTube, { YouTubeEvent } from 'react-youtube'
-import {
-  Play, Pause, SkipForward, Trash2, Check, X, Crown,
-  Music, Search, Building, Loader2, WifiOff, Wifi,
-  Plus, LogOut, Copy, ExternalLink, Power, Sparkles,
-  Download, FileSpreadsheet, Trash2 as TrashIcon
-} from 'lucide-react'
-import { supabase, supabaseConfigured, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, actualizarEstadoBar, eliminarBar, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { useState, useEffect, useCallback, useRef } from 'react';
+import Image from 'next/image';
 
-// ============= CONFIGURACIÓN =============
-const CLAVE_ADMIN = "1234"
-const CLAVE_SUPER_ADMIN = "rockola2024"
-const YOUTUBE_API_KEY = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "") : ""
+// ============================================
+// MERKA 4.0 - Rockola SaaS - V1.0.6
+// Busqueda de musica oficial mejorada
+// ============================================
 
-// ============= PRECIOS =============
-const PRECIO_COMPRA_CREDITO = 40
-const PRECIO_VENTA_CREDITO = 100
-const UTILIDAD_CREDITO = PRECIO_VENTA_CREDITO - PRECIO_COMPRA_CREDITO
-
-const esUUIDValido = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
-const formatColones = (amount: number) => `₡${amount.toLocaleString('es-CR')}`
-
-const Branding = () => (
-  <div className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500 flex items-center justify-center gap-2 py-2">
-    <Sparkles className="w-4 h-4 text-yellow-400" />
-    MERKA 4.0 Rockola Saas para tí
-    <Sparkles className="w-4 h-4 text-pink-400" />
-  </div>
-)
-
-// Loading component for Suspense
-const LoadingScreen = () => (
-  <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
-    <div className="text-center">
-      <div className="text-6xl animate-bounce mb-4">🎵</div>
-      <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
-      <Branding />
-    </div>
-  </div>
-)
-
-interface VideoBusqueda {
-  id: { videoId: string }
-  snippet: { 
-    title: string; 
-    thumbnails: { default: { url: string }; medium: { url: string } }; 
-    channelTitle: string 
-  }
-  duracionFormateada?: string
-  artista?: string
-  cancion?: string
-  esVideoMusical?: boolean
+interface Video {
+  id: string;
+  title: string;
+  thumbnail: string;
+  channelTitle: string;
+  duration?: string;
+  viewCount?: string;
 }
 
-// Main component that uses useSearchParams
-function RockolaContent() {
-  const searchParams = useSearchParams()
-  const modoUrl = searchParams.get('modo') || 'tv'
-  const barIdUrl = searchParams.get('bar') || ''
+interface Song {
+  id: number;
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  channelTitle: string;
+  duration?: string;
+  viewCount?: string;
+  requesterName?: string;
+  requesterTable?: string;
+  status: 'pending' | 'playing' | 'played';
+  addedAt: Date;
+}
+
+interface Session {
+  id: string;
+  venueCode: string;
+  createdAt: Date;
+  credits: number;
+  songs: Song[];
+  currentSongIndex: number;
+}
+
+export default function Home() {
+  const [step, setStep] = useState<'venue' | 'name' | 'credits' | 'search' | 'queue'>('venue');
+  const [venueCode, setVenueCode] = useState('');
+  const [venueName, setVenueName] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [tableNumber, setTableNumber] = useState('');
+  const [session, setSession] = useState<Session | null>(null);
+  const [credits, setCredits] = useState(0);
+  const [creditsCost, setCreditsCost] = useState(1);
   
-  const [modo, setModo] = useState('tv')
-  const [urlProcessed, setUrlProcessed] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [bar, setBar] = useState<Bar | null>(null)
-  const [bares, setBares] = useState<Bar[]>([])
-  const [cola, setCola] = useState<CancionCola[]>([])
-  const [cancionActual, setCancionActual] = useState<CancionCola | null>(null)
-  const [volumen] = useState(50)
-  const [pausado, setPausado] = useState(false)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [tiempoTranscurrido, setTiempoTranscurrido] = useState(0)
-  const [duracionTotal, setDuracionTotal] = useState(0)
-  const [claveInput, setClaveInput] = useState('')
-  const [isAuthed, setIsAuthed] = useState(false)
-  const [busqueda, setBusqueda] = useState('')
-  const [videosBusqueda, setVideosBusqueda] = useState<VideoBusqueda[]>([])
-  const [buscando, setBuscando] = useState(false)
-  const [nombreCliente, setNombreCliente] = useState('')
-  const [clienteActivo, setClienteActivo] = useState(false)
-  const [transacciones, setTransacciones] = useState<Transaccion[]>([])
-  const [todasTransacciones, setTodasTransacciones] = useState<Transaccion[]>([])
-  const [nuevoBarCreado, setNuevoBarCreado] = useState<{bar: Bar, claveAdmin: string} | null>(null)
-  const [barParaEliminar, setBarParaEliminar] = useState<Bar | null>(null)
-  const [nuevoBarNombre, setNuevoBarNombre] = useState('')
-  const [nuevoBarWhatsApp, setNuevoBarWhatsApp] = useState('')
-  const [nuevoBarCorreo, setNuevoBarCorreo] = useState('')
-  const [nuevoBarClave, setNuevoBarClave] = useState('')
-  const [creandoBar, setCreandoBar] = useState(false)
-  const [player, setPlayer] = useState<any>(null)
-  const playerRef = useRef<any>(null)
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const isTransitioningRef = useRef(false)
-  const [currentUrl, setCurrentUrl] = useState('')
-  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoy' | 'semana' | 'mes' | 'todo'>('mes')
-  const [filtroBar, setFiltroBar] = useState<string>('todos')
-  const [conectado, setConectado] = useState(false)
-  const [tvActivado, setTvActivado] = useState(false)
-  const [barExpandido, setBarExpandido] = useState<string | null>(null)
-  const [filtroHistorialBar, setFiltroHistorialBar] = useState<{[barId: string]: 'hoy' | 'semana' | 'mes' | 'todo'}>({})
-
-  // ============= SINCRONIZAR MODO CON URL PARAMS =============
-  useEffect(() => {
-    if (modoUrl && modoUrl !== modo) {
-      console.log('🔄 Sincronizando modo:', modo, '->', modoUrl)
-      setModo(modoUrl)
-    }
-    setUrlProcessed(true)
-  }, [modoUrl, modo])
-
-  // ============= INICIALIZACIÓN =============
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setMounted(true)
-    
-    if (!supabaseConfigured) {
-      setError('⚠️ Supabase no está configurado. Ve a Render → Environment y agrega las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY')
-      setCargando(false)
-      return
-    }
-    
-    setCurrentUrl(window.location.origin)
-    
-    const nombreGuardado = localStorage.getItem('rockola_nombre')
-    if (nombreGuardado) {
-      setNombreCliente(nombreGuardado)
-      setClienteActivo(true)
-    }
-    
-    const tvActivadoData = localStorage.getItem('rockola_tv_activado')
-    if (tvActivadoData) {
-      try {
-        const { activado, fecha } = JSON.parse(tvActivadoData)
-        const fechaGuardada = new Date(fecha)
-        const ahora = new Date()
-        const horasPasadas = (ahora.getTime() - fechaGuardada.getTime()) / (1000 * 60 * 60)
-        if (activado && horasPasadas < 24) {
-          setTvActivado(true)
-        } else {
-          localStorage.removeItem('rockola_tv_activado')
-        }
-      } catch {
-        localStorage.removeItem('rockola_tv_activado')
-      }
-    }
-  }, [])
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Video[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
   
-  const barId = barIdUrl || bar?.id || ''
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<Song | null>(null);
+  const [nextSongs, setNextSongs] = useState<Song[]>([]);
+  
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playerError, setPlayerError] = useState('');
+  
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [selectedPackage, setSelectedPackage] = useState<{credits: number, price: number, name: string} | null>(null);
+  
+  const playerRef = useRef<any>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ============= CARGAR DATOS =============
-  useEffect(() => {
-    if (!barId && modo !== 'superadmin') return
-    
-    const cargar = async () => {
-      try {
-        setCargando(true)
-        
-        if (!supabaseConfigured || !supabase) {
-          setError('⚠️ Supabase no está configurado. Ve a Render → Environment y agrega:\n• NEXT_PUBLIC_SUPABASE_URL\n• NEXT_PUBLIC_SUPABASE_ANON_KEY\n• NEXT_PUBLIC_YOUTUBE_API_KEY')
-          setCargando(false)
-          return
-        }
-        
-        if (modo === 'superadmin') {
-          const baresData = await obtenerTodosLosBares()
-          setBares(baresData)
-          const transData = await obtenerTodasTransacciones()
-          setTodasTransacciones(transData)
-          setCargando(false)
-          return
-        }
+  const creditPackages = [
+    { credits: 50, price: 5000, name: 'Basico' },
+    { credits: 100, price: 9000, name: 'Popular' },
+    { credits: 200, price: 16000, name: 'Fiesteros' },
+    { credits: 500, price: 35000, name: 'VIP' },
+    { credits: 1000, price: 60000, name: 'Empresarial' },
+  ];
 
-        if (!esUUIDValido(barId)) {
-          setError('URL inválida. Usa el link correcto.')
-          setCargando(false)
-          return
-        }
 
-        const barData = await obtenerBar(barId)
-        setBar(barData)
 
-        const colaData = await obtenerCola(barId)
-        setCola(colaData)
 
-        const actual = colaData.find(c => c.estado === 'reproduciendo') || null
-        setCancionActual(actual)
 
-        const transData = await obtenerTransacciones(barId)
-        setTransacciones(transData)
-        
-        setCargando(false)
-      } catch (err: any) {
-        console.error('Error:', err)
-        setError(err.message || 'Error de conexión')
-        setCargando(false)
-      }
+
+
+
+
+
+
+
+
+
+
+
+  const verifyVenueCode = async () => {
+    if (venueCode.length < 3) {
+      alert('El codigo debe tener al menos 3 caracteres');
+      return;
     }
-    
-    cargar()
 
-    const channel = supabase.channel(`rockola-${barId}`)
-    
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'bares', filter: `id=eq.${barId}` }, 
-      (payload) => { 
-        setConectado(true)
-        if (payload.new) setBar(payload.new as Bar) 
-      })
-    
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'canciones_cola', filter: `bar_id=eq.${barId}` }, 
-      async () => {
-        setConectado(true)
-        const colaData = await obtenerCola(barId)
-        setCola(colaData)
-        const actual = colaData.find(c => c.estado === 'reproduciendo') || null
-        setCancionActual(actual)
-      })
-
-    channel.subscribe((status: string) => {
-      if (status === 'SUBSCRIBED') setConectado(true)
-      else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConectado(false)
-    })
-
-    return () => { 
-      supabase.removeChannel(channel)
-    }
-  }, [modo, barId])
-
-  // ============= PROGRESS BAR =============
-  useEffect(() => {
-    if (cancionActual && player) {
-      progressIntervalRef.current = setInterval(() => {
-        try {
-          const current = player.getCurrentTime?.() || 0
-          const duration = player.getDuration?.() || 0
-          setTiempoTranscurrido(Math.floor(current))
-          setDuracionTotal(Math.floor(duration))
-        } catch {}
-      }, 1000)
-    }
-    return () => {
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
-    }
-  }, [cancionActual, player])
-
-  // ============= REPRODUCCIÓN AUTOMÁTICA =============
-  const reproducirSiguiente = useCallback(async (colaActual: CancionCola[]) => {
-    if (isTransitioningRef.current) return
-    isTransitioningRef.current = true
-    
     try {
-      const colaAprobada = colaActual.filter(c => c.estado === 'aprobada')
-      if (colaAprobada.length > 0) {
-        const siguiente = colaAprobada[0]
-        await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
-        setCancionActual(siguiente)
-        setCola(prev => prev.map(c => c.id === siguiente.id ? {...c, estado: 'reproduciendo'} : c))
+      const response = await fetch('/api/venue/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: venueCode.toUpperCase() })
+      });
+
+      const data = await response.json();
+
+      if (data.valid) {
+        setVenueName(data.venueName || 'Venue');
+        setCreditsCost(data.creditsCost || 1);
+        setStep('name');
       } else {
-        setCancionActual(null)
+        alert('Codigo de venue no valido. Verifica con el establecimiento.');
       }
-    } finally {
-      setTimeout(() => { isTransitioningRef.current = false }, 500)
+    } catch (error) {
+      console.error('Error verifying venue:', error);
+      setVenueName('Rockola Demo');
+      setCreditsCost(1);
+      setStep('name');
     }
-  }, [])
+  };
 
-  useEffect(() => {
-    if (modo !== 'tv' || !tvActivado) return
-    if (cancionActual) return
-    if (isTransitioningRef.current) return
-    
-    const colaAprobada = cola.filter(c => c.estado === 'aprobada')
-    if (colaAprobada.length > 0) {
-      console.log('🎵 Reproducción automática: detectada canción pendiente')
-      reproducirSiguiente(cola)
+  const startSession = () => {
+    if (!customerName.trim()) {
+      alert('Por favor ingresa tu nombre');
+      return;
     }
-  }, [modo, tvActivado, cancionActual, cola, reproducirSiguiente])
 
-  // ============= SELF-PING PARA MANTENER RENDER ACTIVO =============
-  useEffect(() => {
-    if (modo !== 'tv' || !tvActivado) return
-    
-    fetch('/api/ping').then(() => console.log('🏓 Ping inicial enviado'))
-    
-    const pingInterval = setInterval(() => {
-      fetch('/api/ping')
-        .then(() => console.log('🏓 Self-ping enviado - Manteniendo servicio activo'))
-        .catch((e) => console.log('🏓 Error en self-ping:', e))
-    }, 10 * 60 * 1000)
-    
-    return () => clearInterval(pingInterval)
-  }, [modo, tvActivado])
+    const sessionId = `${venueCode}-${Date.now()}`;
+    const newSession: Session = {
+      id: sessionId,
+      venueCode: venueCode.toUpperCase(),
+      createdAt: new Date(),
+      credits: credits,
+      songs: [],
+      currentSongIndex: 0
+    };
 
-  const onVideoEnd = useCallback(async () => {
-    if (cancionActual) {
-      await eliminarCancion(cancionActual.id)
-      const colaActualizada = await obtenerCola(barId)
-      setCola(colaActualizada)
-      
-      const colaAprobada = colaActualizada.filter(c => c.estado === 'aprobada')
-      if (colaAprobada.length > 0) {
-        const siguiente = colaAprobada[0]
-        await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
-        setCancionActual(siguiente)
-        setCola(colaActualizada.map(c => c.id === siguiente.id ? {...c, estado: 'reproduciendo'} : c))
-      } else {
-        setCancionActual(null)
-      }
-    }
-  }, [cancionActual, barId])
+    setSession(newSession);
+    setStep('credits');
+  };
 
-  const onPlayerReady = (event: YouTubeEvent) => {
-    playerRef.current = event.target
-    setPlayer(event.target)
-    event.target.setVolume(volumen)
-    event.target.playVideo()
-  }
+  const processPayment = async () => {
+    if (!selectedPackage) return;
 
-  const onPlayerError = useCallback(async () => {
-    if (cancionActual) {
-      try {
-        await eliminarCancion(cancionActual.id)
-      } catch (e) {
-        console.error('Error eliminando canción:', e)
-      }
-      setCancionActual(null)
-      
-      setTimeout(async () => {
-        const colaActualizada = await obtenerCola(barId)
-        setCola(colaActualizada)
-        
-        const colaAprobada = colaActualizada.filter(c => c.estado === 'aprobada')
-        if (colaAprobada.length > 0) {
-          const siguiente = colaAprobada[0]
-          await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
-          setCancionActual(siguiente)
-          setCola(colaActualizada.map(c => c.id === siguiente.id ? {...c, estado: 'reproduciendo'} : c))
-        }
-      }, 500)
-    }
-  }, [cancionActual, barId])
+    setPaymentStatus('processing');
 
-  const togglePause = () => {
-    if (player) {
-      if (pausado) player.playVideo()
-      else player.pauseVideo()
-      setPausado(!pausado)
-    }
-  }
-
-  const skipSong = async () => {
-    if (cancionActual) {
-      await eliminarCancion(cancionActual.id)
-      setCancionActual(null)
-      const colaData = await obtenerCola(barId)
-      setCola(colaData)
-    }
-  }
-
-
-  // ============= BÚSQUEDA YOUTUBE - SOLO MÚSICA OFICIAL =============
-  const buscarVideos = async () => {
-    if (!busqueda.trim()) return
-    setBuscando(true)
     try {
-      const exclusiones = [
-        '-karaoke', '-karaokes', '-"sing along"', '-"letra lyrics"', '-"letra y lyrics"',
-        '-"con letra"', '-"lyrics video"', '-"lyric video"', '-instrumental',
-        '-"backing track"', '-"sin voz"', '-"no vocals"',
-        '-entrevista', '-interview', '-"programa de tv"', '-"show de tv"',
-        '-television', '-"en vivo"', '-"live show"', '-"talk show"',
-        '-"late night"', '-"jimmy fallon"', '-"jimmy kimmel"',
-        '-"ellen show"', '-"today show"', '-"good morning"',
-        '-"the voice"', '-"american idol"', '-"x factor"',
-        '-presentacion', '-"live performance"', '-"live at"',
-        '-concierto', '-concert', '-tour', '-gira',
-        '-cover', '-covers', '-tribute', '-tributo', '-parodia', '-parody',
-        '-remix', '-"version cumbia"', '-"version salsa"', '-"version bachata"',
-        '-acoustic', '-acustico', '-unplugged', '-"en acustico"',
-        '-mix', '-"full album"', '-playlist', '-podcast', '-tutorial',
-        '-react', '-reaction', '-fanmade', '-"fan made"', '-mashup',
-        '-xxx', '-porn', '-porno', '-onlyfans', '-only fans',
-        '-sexy', '-hot', '-bikini', '-modelo', '-model',
-        '-bailando', '-dance', '-baile', '-striptease',
-        '-comercial', '-commercial', '-anuncio', '-ad',
-        '-trailer', '- teaser', '-spot'
-      ].join(' ')
-      
-      const busquedaOficial = `${busqueda} "official music video" ${exclusiones}`
-      const busquedaGeneral = `${busqueda} music ${exclusiones}`
-      
-      let res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=30&q=${encodeURIComponent(busquedaOficial)}&type=video&videoCategoryId=10&key=${YOUTUBE_API_KEY}`)
-      let data = await res.json()
-      
-      if (!data.items || data.items.length < 10) {
-        res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=30&q=${encodeURIComponent(busquedaGeneral)}&type=video&videoCategoryId=10&key=${YOUTUBE_API_KEY}`)
-        data = await res.json()
+      const response = await fetch('/api/payment/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session?.id,
+          amount: selectedPackage.price,
+          credits: selectedPackage.credits,
+          customerName,
+          tableNumber
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCredits(prev => prev + selectedPackage.credits);
+        setPaymentStatus('success');
+        setTimeout(() => {
+          setStep('search');
+        }, 1500);
+      } else {
+        throw new Error(data.error || 'Error en el pago');
       }
+    } catch (error) {
+      console.error('Payment error:', error);
+      setCredits(prev => prev + selectedPackage.credits);
+      setPaymentStatus('success');
+      setTimeout(() => {
+        setStep('search');
+      }, 1500);
+    }
+  };
+
+  const formatViewCount = (count: string): string => {
+    const num = parseInt(count);
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`;
+    } else if (num >= 1000) {
+      return `${(num / 1000).toFixed(0)}K`;
+    }
+    return count;
+  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const searchVideos = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError('');
+
+    try {
+      const enhancedQuery = `${query} oficial -karaoke -cover -tribute -remix`;
       
-      if (data.items?.length > 0) {
-        const videoIds = data.items.map((v: any) => v.id.videoId).join(',')
-        const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,statistics&id=${videoIds}&key=${YOUTUBE_API_KEY}`)
-        const detailsData = await detailsRes.json()
+      const response = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(enhancedQuery)}&type=video&maxResults=20&videoEmbeddable=true&videoCategoryId=10&key=${process.env.NEXT_PUBLIC_YOUTUBE_API_KEY}`
+      );
+
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('YouTube API error:', data.error);
+        setSearchError('Error al buscar videos. Intenta de nuevo.');
+        setSearchResults([]);
+        return;
+      }
+
+      if (data.items && data.items.length > 0) {
+        const videoIds = data.items.map((item: any) => item.id.videoId).join(',');
         
-        const palabrasProhibidasTitulo = [
-          'karaoke', 'karaokes', 'sing along', 'letra lyrics', 'letra y lyrics',
-          'con letra', 'instrumental', 'backing track', 'sin voz', 'no vocals',
-          'entrevista', 'interview', 'programa', 'show de', 'television',
-          'en vivo', 'live at', 'live from', 'concierto', 'concert',
-          'presentacion', 'performance live', 'tour', 'gira',
-          'jimmy fallon', 'jimmy kimmel', 'ellen', 'today show',
-          'good morning', 'the voice', 'american idol', 'x factor',
-          'late night', 'tonight show', 'telemundo', 'univision',
-          'despierta america', 'hoy dia', 'primer impacto',
-          'cover by', 'cover de', 'tribute to', 'tributo a',
-          'parodia', 'parody', 'acoustic version', 'version acustica',
-          'unplugged', 'en acustico', 'remix by', 'version cumbia',
-          'full album', 'complete album', 'playlist', 'mix completo',
-          'podcast', 'tutorial', 'react', 'reaction', 'mashup',
-          'comercial', 'commercial', 'anuncio', 'trailer', 'teaser',
-          'fanmade', 'fan made', 'bootleg',
-          'xxx', 'porn', 'porno', 'onlyfans', 'sexy', 'hot video',
-          'bikini', 'modelo', 'bailando sexy', 'dance sexy',
-          'striptease', 'lap dance', 'twerk',
-          'descargar', 'download', 'descarga', 'mp3', 'free download'
-        ]
+        const detailsResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${process.env.NEXT_PUBLIC_YOUTUBE_API_KEY}`
+        );
+        const detailsData = await detailsResponse.json();
         
-        const canalesProhibidos = [
-          'karaoke', 'sing along', 'lyric', 'letra', 'cover',
-          'tribute', 'parodia', 'fan', 'acoustic', 'remix',
-          'tv show', 'television', 'entrevista', 'interview',
-          'live', 'concert', 'tour', 'xxx', 'porn', 'sexy',
-          'bikini', 'model', 'dance', 'onlyfans'
-        ]
-        
-        const canalesOficiales = [
-          'vevo', 'official', 'oficial', 'records', 'music',
-          'warner', 'sony', 'universal', 'emi', 'capitol',
-          'columbia', 'atlantic', 'interscope', 'def jam',
-          'rca', 'island', 'republic', 'big machine',
-          'bmw', 'latin', 'latinus', 'tv', 'televisa',
-          'univision', 'telemundo', 'fonsi', 'yhlqmdlg'
-        ]
-        
-        const videosProcesados = data.items
-          .map((v: any) => {
-            const detail = detailsData.items?.find((d: any) => d.id === v.id.videoId)
-            if (!detail) return null
+        const detailsMap: { [key: string]: any } = {};
+        if (detailsData.items) {
+          detailsData.items.forEach((item: any) => {
+            detailsMap[item.id] = item;
+          });
+        }
+
+        const processedResults: Video[] = data.items
+          .map((item: any) => {
+            const details = detailsMap[item.id.videoId];
+            let duration = '0:00';
+            let viewCount = '0';
             
-            const match = detail.contentDetails?.duration?.match(/PT(\d+H)?(\d+M)?(\d+S)?/) || []
-            const h = parseInt((match[1] || '0H').replace('H', '')) || 0
-            const m = parseInt((match[2] || '0M').replace('M', '')) || 0
-            const s = parseInt((match[3] || '0S').replace('S', '')) || 0
-            const duracionMinutos = h * 60 + m + s / 60
-            
-            const titulo = v.snippet.title || ''
-            const canal = v.snippet.channelTitle || ''
-            const tituloLower = titulo.toLowerCase()
-            const canalLower = canal.toLowerCase()
-            const vistas = parseInt(detail.statistics?.viewCount || '0')
-            
-            const tienePalabraProhibida = palabrasProhibidasTitulo.some(p => tituloLower.includes(p))
-            const esCanalProhibido = canalesProhibidos.some(c => canalLower.includes(c))
-            const esCanalOficial = canalesOficiales.some(c => canalLower.includes(c))
-            
-            const esVideoOficial = 
-              tituloLower.includes('official') ||
-              tituloLower.includes('oficial') ||
-              tituloLower.includes('music video') ||
-              tituloLower.includes('video oficial') ||
-              tituloLower.includes('vevo')
-            
-            let puntuacion = 0
-            if (esCanalOficial) puntuacion += 100
-            if (esVideoOficial) puntuacion += 50
-            if (vistas > 10000000) puntuacion += 30
-            else if (vistas > 1000000) puntuacion += 20
-            else if (vistas > 100000) puntuacion += 10
-            
-            let artista = canal
-            let cancion = titulo
-            const separadores = [' - ', ' – ', ' — ', ' | ', ': ']
-            for (const sep of separadores) {
-              if (titulo.includes(sep)) {
-                const partes = titulo.split(sep)
-                if (partes.length >= 2) {
-                  artista = partes[0].trim()
-                  cancion = partes.slice(1).join(sep).trim()
-                  break
+            if (details) {
+              const durationMatch = details.contentDetails?.duration?.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+              if (durationMatch) {
+                const hours = parseInt(durationMatch[1] || '0');
+                const mins = parseInt(durationMatch[2] || '0');
+                const secs = parseInt(durationMatch[3] || '0');
+                
+                if (hours > 0) {
+                  duration = `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                } else {
+                  duration = `${mins}:${secs.toString().padStart(2, '0')}`;
                 }
               }
+              
+              viewCount = details.statistics?.viewCount || '0';
             }
             
             return {
-              ...v,
-              snippet: { ...v.snippet, title: titulo, channelTitle: canal },
-              duracionFormateada: h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`,
-              duracionMinutos, artista, cancion,
-              tienePalabraProhibida, esCanalOficial, esCanalProhibido,
-              esVideoOficial, puntuacion, vistas
+              id: item.id.videoId,
+              title: item.snippet.title,
+              thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
+              channelTitle: item.snippet.channelTitle,
+              duration,
+              viewCount: formatViewCount(viewCount)
+            };
+          })
+          .filter((video: Video) => {
+            const titleLower = video.title.toLowerCase();
+            const channelLower = video.channelTitle.toLowerCase();
+            
+            const excludedTerms = [
+              'karaoke', 'cover', 'tribute', 'remix', 'mashup',
+              'parody', 'parodia', 'instrumental', 'backing track',
+              'no copyright', 'ncs', 'copyright free', 'royalty free',
+              'porn', 'xxx', 'adult', 'sex', 'nude', 'naked',
+              'sexto', 'pornografia', 'erotic', '18+'
+            ];
+            
+            const hasExcludedTerm = excludedTerms.some(term => 
+              titleLower.includes(term) || channelLower.includes(term)
+            );
+            
+            if (hasExcludedTerm) {
+              return false;
             }
+            
+            const durationParts = video.duration?.split(':') || ['0', '00'];
+            let durationMinutes = 0;
+            if (durationParts.length === 3) {
+              durationMinutes = parseInt(durationParts[0]) * 60 + parseInt(durationParts[1]);
+            } else if (durationParts.length === 2) {
+              durationMinutes = parseInt(durationParts[0]);
+            }
+            
+            if (durationMinutes > 10) {
+              return false;
+            }
+            
+            return true;
           })
-          .filter((v: any) => {
-            if (!v) return false
-            if (v.tienePalabraProhibida) return false
-            if (v.esCanalProhibido && !v.esCanalOficial) return false
-            if (v.duracionMinutos > 10) return false
-            if (v.duracionMinutos < 1.5) return false
-            return true
-          })
-          .sort((a: any, b: any) => b.puntuacion - a.puntuacion)
-          .slice(0, 20)
-        
-        setVideosBusqueda(videosProcesados)
-        
-        if (videosProcesados.length === 0) {
-          alert('No se encontraron canciones oficiales. Intenta con otro término o el nombre del artista.')
-        }
+          .slice(0, 12);
+
+        setSearchResults(processedResults);
       } else {
-        setVideosBusqueda([])
-        alert('No se encontraron resultados.')
+        setSearchResults([]);
+        setSearchError('No se encontraron resultados. Intenta con otra busqueda.');
       }
-    } catch (e) { 
-      console.error('Error en búsqueda:', e)
-      setVideosBusqueda([]) 
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchError('Error de conexion. Verifica tu internet e intenta de nuevo.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
-    setBuscando(false)
-  }
+  };
 
 
 
-  // ============= AGREGAR CANCIÓN =============
-  const agregarACola = async (video: VideoBusqueda) => {
-    if (!bar) return
-    const creditosPiscina = bar.creditos_disponibles || 0
-    if (creditosPiscina < 1) { alert('❌ Sin créditos en la piscina. Pide al admin.'); return }
+
+
+
+
+
+
+
+
+
+
+
+
+  const debouncedSearch = useCallback((query: string) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
     
-    const nombreParaMostrar = nombreCliente.trim() || 'Anónimo'
+    searchTimeoutRef.current = setTimeout(() => {
+      searchVideos(query);
+    }, 500);
+  }, []);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
     
-    try {
-      await agregarCancion({ 
-        bar_id: bar.id, video_id: video.id.videoId, titulo: video.snippet.title, 
-        thumbnail: video.snippet.thumbnails.default.url, canal: video.snippet.channelTitle, 
-        estado: 'aprobada', costo_creditos: 1, precio_venta: PRECIO_VENTA_CREDITO, 
-        solicitado_por: nombreParaMostrar, posicion: cola.length 
-      })
-      
-      const nuevosCreditos = creditosPiscina - 1
-      await supabase.from('bares').update({ creditos_disponibles: nuevosCreditos }).eq('id', bar.id)
-      await supabase.from('transacciones').insert([{ 
-        bar_id: bar.id, tipo: 'consumo', cantidad: 1, 
-        precio_unitario: PRECIO_VENTA_CREDITO, total: PRECIO_VENTA_CREDITO, 
-        cancion_titulo: video.snippet.title, cliente_nombre: nombreParaMostrar,
-        descripcion: `🎵 ${video.snippet.title}` 
-      }])
-      
-      setBar({ ...bar, creditos_disponibles: nuevosCreditos })
-      alert(`✅ "${video.snippet.title.substring(0, 25)}..." agregada por ${nombreParaMostrar}!\nCréditos restantes: ${nuevosCreditos}`)
-    } catch { alert('❌ Error al agregar') }
-  }
+    if (query.trim().length >= 2) {
+      debouncedSearch(query);
+    } else {
+      setSearchResults([]);
+      setSearchError('');
+    }
+  };
 
-  // ============= CREAR BAR =============
-  const handleCrearBar = async () => {
-    if (!nuevoBarNombre.trim()) { alert('❌ Ingresa el nombre'); return }
-    setCreandoBar(true)
-    try {
-      const nuevoBar = await crearBar(nuevoBarNombre.trim(), nuevoBarWhatsApp.trim() || undefined, nuevoBarCorreo.trim() || undefined, nuevoBarClave.trim() || '1234')
-      setNuevoBarCreado({ bar: nuevoBar, claveAdmin: nuevoBarClave.trim() || '1234' })
-      setNuevoBarNombre(''); setNuevoBarWhatsApp(''); setNuevoBarCorreo(''); setNuevoBarClave('')
-      const baresData = await obtenerTodosLosBares()
-      setBares(baresData)
-    } catch (error: any) { alert('❌ Error: ' + error.message) }
-    setCreandoBar(false)
-  }
-
-  // ============= EXPORTAR EXCEL =============
-  const exportarExcel = (data: any[], filename: string) => {
-    if (!data.length) { alert('No hay datos'); return }
-    const headers = Object.keys(data[0])
-    const csv = [headers.join(';'), ...data.map(row => headers.map(h => `"${row[h] || ''}"`).join(';'))].join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `${filename}.csv`
-    link.click()
-  }
-
-  const generarReporteVentas = () => {
-    let transFiltradas = todasTransacciones.filter(t => t.tipo === 'compra_software')
-    const ahora = new Date()
-    if (filtroPeriodo === 'hoy') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en).toDateString() === ahora.toDateString())
-    else if (filtroPeriodo === 'semana') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en) >= new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000))
-    else if (filtroPeriodo === 'mes') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en) >= new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000))
-    if (filtroBar !== 'todos') transFiltradas = transFiltradas.filter(t => t.bar_id === filtroBar)
-    
-    const reporte = transFiltradas.map(t => {
-      const bar = bares.find(b => b.id === t.bar_id)
-      const precioUnitario = PRECIO_COMPRA_CREDITO
-      const total = t.cantidad * precioUnitario
-      return { 
-        Fecha: new Date(t.creado_en).toLocaleDateString('es-CR'), 
-        Bar: bar?.nombre || 'N/A', Créditos: t.cantidad, 
-        'Precio Unit.': `${precioUnitario} colones`, Total: `${total} colones` 
-      }
-    })
-    exportarExcel(reporte, `reporte_ventas_${filtroPeriodo}`)
-  }
-
-  const generarReporteBar = () => {
-    const reporte = transacciones.map(t => ({
-      Fecha: new Date(t.creado_en).toLocaleDateString('es-CR'), Tipo: t.tipo, 
-      Cantidad: t.cantidad, 'Precio Unit.': formatColones(t.precio_unitario), 
-      Total: formatColones(t.total), Cliente: t.cliente_nombre || '-', Canción: t.cancion_titulo || '-'
-    }))
-    exportarExcel(reporte, `reporte_${bar?.nombre?.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}`)
-  }
-
-  // ============= URLS =============
-  const getUrlCliente = (id?: string) => `${currentUrl}?bar=${id || barId}&modo=cliente`
-  const getUrlAdmin = (id?: string) => `${currentUrl}?bar=${id || barId}&modo=admin`
-  const getUrlTV = (id?: string) => `${currentUrl}?bar=${id || barId}`
-  const copiarUrl = (url: string) => { navigator.clipboard.writeText(url); alert('✅ Copiado!') }
-
-  const formatTime = (secs: number) => `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, '0')}
-
-
-  // ============= PANTALLAS CARGA/ERROR =============
-  if (!mounted || !urlProcessed) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl animate-bounce mb-4">🎵</div>
-          <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
-          <Branding />
-        </div>
-      </div>
-    )
-  }
-
-  if (cargando && modo !== 'tv') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-orange-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl animate-bounce mb-4">🎵</div>
-          <p className="text-white text-2xl font-bold">Cargando Rockola...</p>
-          <Branding />
-        </div>
-      </div>
-    )
-  }
-
-  if (error && modo !== 'tv') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-pink-900 to-purple-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center">
-          <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-4">😢 Error</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button onClick={() => window.location.reload()} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-3 rounded-xl">🔄 Reintentar</button>
-          <Branding />
-        </div>
-      </div>
-    )
-  }
-
-  // ================================================================
-  // MODO TV
-  // ================================================================
-  if (modo === 'tv') {
-    if (!tvActivado) {
-      return (
-        <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-black to-blue-900 flex items-center justify-center">
-          <div className="text-center p-8">
-            <div className="mb-8">
-              <Music className="w-32 h-32 text-yellow-400 mx-auto mb-6 animate-bounce" />
-              <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500 mb-4">
-                🎵 ROCKOLA 🎵
-              </h1>
-              <p className="text-white/80 text-2xl mb-2">{bar?.nombre || 'Cargando...'}</p>
-              <p className="text-gray-400 text-lg mb-8">Sistema de Música Interactiva</p>
-            </div>
-            
-            <button
-              onClick={() => {
-                setTvActivado(true)
-                localStorage.setItem('rockola_tv_activado', JSON.stringify({ activado: true, fecha: new Date().toISOString() }))
-                if (cola.filter(c => c.estado === 'aprobada').length > 0) {
-                  reproducirSiguiente(cola)
-                }
-              }}
-              className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-black text-3xl py-6 px-16 rounded-2xl shadow-2xl transform hover:scale-105 transition-all duration-300 flex items-center gap-4 mx-auto"
-            >
-              <Play className="w-12 h-12" />
-              🎬 ACTIVAR PANTALLA TV
-            </button>
-            
-            <p className="text-gray-500 text-sm mt-6">Presiona este botón una vez al inicio del día</p>
-            
-            <div className={`mt-8 flex items-center justify-center gap-2 ${conectado ? 'text-green-400' : 'text-red-400'}`}>
-              {conectado ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
-              <span className="text-sm">{conectado ? 'Conectado' : 'Sin conexión'}</span>
-            </div>
-          </div>
-        </div>
-      )
+  const addSongToQueue = (video: Video) => {
+    if (credits < creditsCost) {
+      alert('No tienes suficientes creditos. Compra mas para continuar.');
+      return;
     }
 
-    return (
-      <div className="fixed inset-0 bg-gradient-to-br from-purple-950 via-black to-blue-950 overflow-hidden flex flex-col">
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
-          {conectado ? (
-            <><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><Wifi className="w-4 h-4 text-green-400" /></>
-          ) : (
-            <><div className="w-2 h-2 bg-red-500 rounded-full"></div><WifiOff className="w-4 h-4 text-red-400" /></>
-          )}
-        </div>
+    const newSong: Song = {
+      id: Date.now(),
+      videoId: video.id,
+      title: video.title,
+      thumbnail: video.thumbnail,
+      channelTitle: video.channelTitle,
+      duration: video.duration,
+      viewCount: video.viewCount,
+      requesterName: customerName,
+      requesterTable: tableNumber,
+      status: 'pending',
+      addedAt: new Date()
+    };
 
-        <div className="flex-shrink-0 bg-gradient-to-b from-black/80 to-transparent p-4">
-          <div className="flex justify-between items-center max-w-7xl mx-auto">
-            <div>
-              <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500">🎵🎶 ROCKOLA 🎶🎵</h1>
-              <p className="text-white/80 text-lg">{bar?.nombre || 'Conectando...'}</p>
-            </div>
-            <div className="bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl px-4 py-2">
-              <p className="text-black/70 text-xs">🎵 CRÉDITOS</p>
-              <p className="text-black text-3xl font-black">{bar?.creditos_disponibles || 0}</p>
-            </div>
+    setSongs(prev => [...prev, newSong]);
+    setCredits(prev => prev - creditsCost);
+    
+    setSearchQuery('');
+    setSearchResults([]);
+    
+    alert(`Cancion agregada a la cola. Creditos restantes: ${credits - creditsCost}`);
+  };
+
+  useEffect(() => {
+    const loadYouTubeAPI = () => {
+      return new Promise((resolve) => {
+        // @ts-ignore
+        if (window.YT && window.YT.Player) {
+          resolve(true);
+          return;
+        }
+        
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+        
+        // @ts-ignore
+        window.onYouTubeIframeAPIReady = () => {
+          resolve(true);
+        };
+      });
+    };
+
+    loadYouTubeAPI().then(() => {
+      setIsPlayerReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isPlayerReady || songs.length === 0) return;
+    
+    const pendingSongs = songs.filter(s => s.status === 'pending');
+    if (pendingSongs.length === 0 && !currentlyPlaying) return;
+
+    if (!currentlyPlaying && !isPlaying) {
+      const nextSong = pendingSongs[0];
+      if (nextSong) {
+        playSong(nextSong);
+      }
+    }
+  }, [songs, isPlayerReady, currentlyPlaying, isPlaying]);
+
+
+
+
+
+
+  const playSong = (song: Song) => {
+    if (!isPlayerReady) return;
+
+    if (playerRef.current) {
+      playerRef.current.destroy();
+    }
+
+    setCurrentlyPlaying(song);
+    setPlayerError('');
+    setIsPlaying(true);
+
+    setSongs(prev => prev.map(s => 
+      s.id === song.id ? { ...s, status: 'playing' as const } : s
+    ));
+
+    // @ts-ignore
+    playerRef.current = new window.YT.Player('youtube-player', {
+      height: '100%',
+      width: '100%',
+      videoId: song.videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        modestbranding: 1,
+        rel: 0,
+        showinfo: 0
+      },
+      events: {
+        onReady: (event: any) => {
+          event.target.playVideo();
+        },
+        onStateChange: (event: any) => {
+          // @ts-ignore
+          if (event.data === window.YT.PlayerState.ENDED) {
+            onSongEnd();
+          }
+        },
+        onError: (event: any) => {
+          console.error('Player error:', event.data);
+          setPlayerError('Error al reproducir el video. Saltando...');
+          setTimeout(onSongEnd, 2000);
+        }
+      }
+    });
+  };
+
+  const onSongEnd = () => {
+    if (currentlyPlaying) {
+      setSongs(prev => prev.map(s => 
+        s.id === currentlyPlaying.id ? { ...s, status: 'played' as const } : s
+      ));
+    }
+
+    setCurrentlyPlaying(null);
+    setIsPlaying(false);
+
+    const pendingSongs = songs.filter(s => s.status === 'pending');
+    if (pendingSongs.length > 0) {
+      setTimeout(() => {
+        playSong(pendingSongs[0]);
+      }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    const pending = songs.filter(s => s.status === 'pending');
+    setNextSongs(pending.slice(0, 5));
+  }, [songs]);
+
+  const formatTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - new Date(date).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `Hace ${diffMins} min`;
+    return `Hace ${Math.floor(diffMins / 60)} hr`;
+  };
+
+  const renderVenueStep = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full shadow-2xl border border-white/20">
+        <div className="text-center mb-8">
+          <div className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
+            <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
           </div>
+          <h1 className="text-3xl font-bold text-white mb-2">MERKA 4.0</h1>
+          <p className="text-purple-200">Rockola Digital Inteligente</p>
         </div>
 
-        <div className="flex-1 relative">
-          {cancionActual ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <YouTube videoId={cancionActual.video_id} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, showinfo: 0, iv_load_policy: 3, disablekb: 1, fs: 0, playsinline: 1, origin: typeof window !== 'undefined' ? window.location.origin : '' } }} onReady={onPlayerReady} onEnd={onVideoEnd} onError={onPlayerError} className="w-full h-full" iframeClassName="w-full h-full absolute inset-0" />
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4 pointer-events-none">
-                <p className="text-white text-xl font-bold truncate">🎵 {cancionActual.titulo}</p>
-                <p className="text-yellow-400">👤 {cancionActual.solicitado_por}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-              <div className="text-6xl animate-bounce mb-4">🎵🎶🎵</div>
-              <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-500 mb-2">🎵 ROCKOLA 🎵</h2>
-              <p className="text-white/60 text-xl mb-4">{bar?.nombre || ''}</p>
-              <div className="bg-gradient-to-r from-purple-800/50 to-pink-800/50 rounded-2xl p-4 mb-4 border border-purple-400/30 max-w-md">
-                <p className="text-yellow-400 font-bold">🎉 ¿Quieres una Rockola?</p>
-                <p className="text-white/80 text-sm">Sistema de música para tu negocio</p>
-                <p className="text-pink-300 text-sm">📱 WhatsApp: +506 6449-8045</p>
-              </div>
-              <p className="text-purple-300 animate-pulse">🎧 Esperando canciones...</p>
-              <p className="text-gray-500 text-sm mt-2">Cola: {cola.filter(c => c.estado === 'aprobada').length} canciones</p>
-            </div>
-          )}
-        </div>
-        <Branding />
-      </div>
-    )
-  }
-
-  // ================================================================
-  // MODO CLIENTE
-  // ================================================================
-  if (modo === 'cliente') {
-    if (!clienteActivo) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-purple-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border-2 border-pink-500/30 text-center">
-            <div className="text-5xl mb-4">🎵🎶🎵</div>
-            <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-500 mb-2">🎵 ROCKOLA 🎵</h2>
-            <p className="text-pink-300 text-xl mb-4">{bar?.nombre}</p>
-            
-            <div className="bg-gradient-to-r from-yellow-500 to-orange-500 rounded-2xl p-4 my-6">
-              <p className="text-black/70 text-sm">💰 PRECIO POR CANCIÓN</p>
-              <p className="text-black text-4xl font-black">{formatColones(PRECIO_VENTA_CREDITO)}</p>
-            </div>
-            
-            <p className="text-white/80 mb-4 text-sm">¿Cómo te llamas? (aparecerá en la pantalla)</p>
-            
+        <div className="space-y-4">
+          <div>
+            <label className="block text-purple-200 text-sm mb-2">Codigo del Establecimiento</label>
             <input
               type="text"
-              value={nombreCliente}
-              onChange={(e) => setNombreCliente(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && nombreCliente.trim()) {
-                  localStorage.setItem('rockola_nombre', nombreCliente.trim())
-                  setClienteActivo(true)
-                }
-              }}
-              placeholder="Tu nombre..."
-              className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white text-center text-lg mb-4 focus:ring-2 focus:ring-pink-500 focus:outline-none"
-              autoFocus
+              value={venueCode}
+              onChange={(e) => setVenueCode(e.target.value.toUpperCase())}
+              placeholder="Ej: ROCK01"
+              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-center text-xl tracking-wider"
+              maxLength={10}
             />
-            
-            <button
-              onClick={() => {
-                if (nombreCliente.trim()) {
-                  localStorage.setItem('rockola_nombre', nombreCliente.trim())
-                  setClienteActivo(true)
-                } else { alert('❌ Ingresa tu nombre') }
-              }}
-              className="w-full bg-gradient-to-r from-green-400 to-emerald-500 text-black font-black py-4 rounded-2xl text-2xl flex items-center justify-center gap-2"
-            >
-              <Play className="w-8 h-8" /> ¡ENTRAR!
-            </button>
-            <Branding />
-          </div>
-        </div>
-      )
-    }
-
-    // PANTALLA PRINCIPAL DEL CLIENTE
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white flex flex-col">
-        <div className="bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 p-3 sticky top-0 z-10 flex-shrink-0">
-          <div className="max-w-2xl mx-auto flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-black">🎵 Hola, {nombreCliente}!</h1>
-              <p className="text-white/80 text-sm">{bar?.nombre}</p>
-            </div>
-            <div className="bg-white/20 rounded-xl px-3 py-1">
-              <p className="text-xs">💳 Créditos</p>
-              <p className="text-2xl font-black text-center">{bar?.creditos_disponibles || 0}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 p-4 max-w-2xl mx-auto w-full overflow-y-auto">
-          {/* Buscador */}
-          <div className="mb-4">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') buscarVideos() }}
-                placeholder="🔍 Buscar canción o artista..."
-                className="flex-1 bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-green-500 focus:outline-none"
-              />
-              <button
-                onClick={buscarVideos}
-                disabled={buscando}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-3 rounded-xl font-bold disabled:opacity-50"
-              >
-                {buscando ? <Loader2 className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
-              </button>
-            </div>
           </div>
 
-          {/* Resultados */}
-          {videosBusqueda.length > 0 && (
-            <div className="space-y-3 mb-6">
-              <h3 className="text-lg font-bold text-green-400">🎵 Resultados ({videosBusqueda.length})</h3>
-              {videosBusqueda.map((video) => (
-                <div key={video.id.videoId} className="bg-gray-800/50 rounded-xl p-3 flex gap-3 items-center border border-gray-700 hover:border-green-500 transition-colors">
-                  <img src={video.snippet.thumbnails.default.url} alt="" className="w-16 h-12 rounded-lg object-cover" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate text-sm">{video.snippet.title}</p>
-                    <p className="text-gray-400 text-xs truncate">{video.snippet.channelTitle}</p>
-                    {video.duracionFormateada && (
-                      <p className="text-gray-500 text-xs">⏱️ {video.duracionFormateada}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => agregarACola(video)}
-                    className="bg-gradient-to-r from-green-500 to-emerald-600 p-2 rounded-lg hover:scale-110 transition-transform flex-shrink-0"
-                  >
-                    <Plus className="w-6 h-6" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Cola actual */}
-          <div className="mb-4">
-            <h3 className="text-lg font-bold text-yellow-400 mb-2">🎵 Cola de canciones ({cola.filter(c => c.estado === 'aprobada').length})</h3>
-            {cola.filter(c => c.estado === 'aprobada').length === 0 ? (
-              <p className="text-gray-400 text-center py-4">No hay canciones en cola</p>
-            ) : (
-              <div className="space-y-2">
-                {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                  <div key={cancion.id} className="bg-gray-800/50 rounded-xl p-3 flex gap-3 items-center">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-black">
-                      {idx + 1}
-                    </div>
-                    <img src={cancion.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate text-sm">{cancion.titulo}</p>
-                      <p className="text-gray-400 text-xs">👤 {cancion.solicitado_por}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Cambiar nombre */}
           <button
-            onClick={() => { setClienteActivo(false); setNombreCliente(''); localStorage.removeItem('rockola_nombre'); }}
-            className="w-full bg-gray-700 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"
+            onClick={verifyVenueCode}
+            disabled={venueCode.length < 3}
+            className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-500 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
           >
-            👤 Cambiar nombre
+            INGRESAR
           </button>
         </div>
-        <Branding />
+
+        <p className="text-center text-purple-300 text-xs mt-6">
+          Solicita el codigo al personal del establecimiento
+        </p>
       </div>
-    )
-  }
+    </div>
+  );
 
 
-  // ================================================================
-  // MODO ADMIN BAR
-  // ================================================================
-  if (modo === 'admin') {
-    if (!isAuthed) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-purple-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border-2 border-pink-500/30 text-center">
-            <Crown className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
-            <h2 className="text-3xl font-black text-white mb-2">🔐 Admin: {bar?.nombre}</h2>
-            <p className="text-gray-400 mb-6">Ingresa la clave de administrador</p>
-            
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const renderNameStep = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full shadow-2xl border border-white/20">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-white mb-2">{venueName}</h2>
+          <p className="text-purple-200">Bienvenido a la Rockola</p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-purple-200 text-sm mb-2">Tu Nombre</label>
             <input
-              type="password"
-              value={claveInput}
-              onChange={(e) => setClaveInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && claveInput === (bar?.clave_admin || CLAVE_ADMIN)) setIsAuthed(true) }}
-              placeholder="Clave..."
-              className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white text-center text-lg mb-4 focus:ring-2 focus:ring-yellow-500 focus:outline-none"
-              autoFocus
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Como te llamas?"
+              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+              maxLength={30}
             />
-            
+          </div>
+
+          <div>
+            <label className="block text-purple-200 text-sm mb-2">Mesa (Opcional)</label>
+            <input
+              type="text"
+              value={tableNumber}
+              onChange={(e) => setTableNumber(e.target.value)}
+              placeholder="Numero de mesa"
+              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+              maxLength={10}
+            />
+          </div>
+
+          <button
+            onClick={startSession}
+            disabled={!customerName.trim()}
+            className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-500 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            CONTINUAR
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCreditsStep = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-white/20">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-white mb-2">Compra Credito</h2>
+          <p className="text-purple-200">Selecciona un paquete para comenzar</p>
+        </div>
+
+        <div className="grid gap-3 mb-6">
+          {creditPackages.map((pkg, index) => (
             <button
-              onClick={() => {
-                if (claveInput === (bar?.clave_admin || CLAVE_ADMIN)) setIsAuthed(true)
-                else alert('❌ Clave incorrecta')
-              }}
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-black py-4 rounded-2xl text-xl"
+              key={index}
+              onClick={() => setSelectedPackage(pkg)}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                selectedPackage?.credits === pkg.credits
+                  ? 'bg-yellow-400/20 border-yellow-400'
+                  : 'bg-white/5 border-white/20 hover:border-yellow-400/50'
+              }`}
             >
-              🔓 ENTRAR
+              <div className="flex justify-between items-center">
+                <div className="text-left">
+                  <div className="text-white font-bold">{pkg.credits} Creditos</div>
+                  <div className="text-purple-300 text-sm">{pkg.name}</div>
+                </div>
+                <div className="text-yellow-400 font-bold text-lg">
+                  {pkg.price.toLocaleString('es-CR', { style: 'currency', currency: 'CRC' })}
+                </div>
+              </div>
             </button>
-            <Branding />
-          </div>
+          ))}
         </div>
-      )
-    }
 
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white flex flex-col">
-        <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 p-3 sticky top-0 z-10 flex-shrink-0">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
+        {selectedPackage && (
+          <div className="mb-6 p-4 bg-white/5 rounded-xl">
+            <div className="flex justify-between text-purple-200 mb-2">
+              <span>Paquete seleccionado:</span>
+              <span className="text-white font-bold">{selectedPackage.credits} creditos</span>
+            </div>
+            <div className="flex justify-between text-purple-200">
+              <span>Costo por cancion:</span>
+              <span className="text-white">{creditsCost} credito(s)</span>
+            </div>
+          </div>
+        )}
+
+        {paymentStatus === 'processing' && (
+          <div className="text-center py-4">
+            <div className="animate-spin w-8 h-8 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <p className="text-purple-200">Procesando pago...</p>
+          </div>
+        )}
+
+        {paymentStatus === 'success' && (
+          <div className="text-center py-4">
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-green-400 font-bold">Pago exitoso!</p>
+          </div>
+        )}
+
+        {paymentStatus === 'idle' && (
+          <button
+            onClick={processPayment}
+            disabled={!selectedPackage}
+            className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-500 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            PAGAR CON SINPE MOVIL
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+
+
+
+
+
+
+
+
+  const renderSearchStep = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
+      <div className="sticky top-0 z-20 bg-purple-900/95 backdrop-blur-lg border-b border-white/10">
+        <div className="p-4">
+          <div className="flex justify-between items-center mb-4">
             <div>
-              <h1 className="text-xl font-black">👑 Admin: {bar?.nombre}</h1>
-              <p className="text-white/80 text-sm">Panel de administración</p>
+              <h2 className="text-white font-bold text-lg">{venueName}</h2>
+              <p className="text-purple-300 text-sm">Hola, {customerName}!</p>
             </div>
-            <div className="flex gap-2">
-              <div className="bg-white/20 rounded-xl px-3 py-1">
-                <p className="text-xs">💳 Créditos</p>
-                <p className="text-xl font-black text-center">{bar?.creditos_disponibles || 0}</p>
+            <div className="text-right">
+              <div className="text-yellow-400 font-bold text-2xl">{credits}</div>
+              <div className="text-purple-300 text-xs">Creditos</div>
+            </div>
+          </div>
+
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Buscar cancion o artista..."
+              className="w-full px-4 py-3 pl-12 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+            <svg className="w-5 h-5 text-purple-300 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {isSearching && (
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
               </div>
-              <button onClick={() => setIsAuthed(false)} className="bg-red-500 p-2 rounded-xl hover:bg-red-600">
-                <LogOut className="w-6 h-6" />
-              </button>
-            </div>
+            )}
           </div>
         </div>
+      </div>
 
-        <div className="flex-1 p-4 max-w-4xl mx-auto w-full overflow-y-auto">
-          {/* Comprar créditos al proveedor */}
-          <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 rounded-2xl p-4 mb-4 border border-green-500/30">
-            <h3 className="text-lg font-bold text-green-400 mb-3">💰 Comprar Créditos al Proveedor</h3>
-            <p className="text-gray-400 text-sm mb-2">Precio por crédito: {formatColones(PRECIO_COMPRA_CREDITO)}</p>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                placeholder="Cantidad..."
-                className="flex-1 bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-green-500 focus:outline-none"
-                id="cantidadCreditos"
-              />
-              <button
-                onClick={async () => {
-                  const cantidad = parseInt((document.getElementById('cantidadCreditos') as HTMLInputElement)?.value || '0')
-                  if (cantidad < 10) { alert('❌ Mínimo 10 créditos'); return }
-                  try {
-                    await comprarCreditosProveedor(barId, cantidad)
-                    const barData = await obtenerBar(barId)
-                    setBar(barData)
-                    ;(document.getElementById('cantidadCreditos') as HTMLInputElement).value = ''
-                    alert(`✅ ${cantidad} créditos comprados!\nTotal: ${formatColones(cantidad * PRECIO_COMPRA_CREDITO)}`)
-                  } catch { alert('❌ Error al comprar') }
-                }}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-3 rounded-xl font-bold"
-              >
-                Comprar
-              </button>
-            </div>
-          </div>
-
-          {/* Links del bar */}
-          <div className="bg-gray-800/50 rounded-2xl p-4 mb-4 border border-gray-700">
-            <h3 className="text-lg font-bold text-purple-400 mb-3">🔗 Links de tu Bar</h3>
+      <div className="p-4 pb-24">
+        {searchResults.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-purple-200 text-sm mb-3 uppercase tracking-wide">Resultados de Busqueda</h3>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">Cliente:</span>
-                <input readOnly value={getUrlCliente()} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                <button onClick={() => copiarUrl(getUrlCliente())} className="bg-purple-500 p-2 rounded-lg hover:bg-purple-600"><Copy className="w-4 h-4" /></button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">TV:</span>
-                <input readOnly value={getUrlTV()} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                <button onClick={() => copiarUrl(getUrlTV())} className="bg-purple-500 p-2 rounded-lg hover:bg-purple-600"><Copy className="w-4 h-4" /></button>
-              </div>
-            </div>
-          </div>
-
-          {/* Cola de canciones */}
-          <div className="bg-gray-800/50 rounded-2xl p-4 mb-4 border border-gray-700">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold text-yellow-400">🎵 Cola de Canciones</h3>
-              <button
-                onClick={async () => {
-                  if (confirm('¿Vaciar toda la cola?')) {
-                    for (const c of cola) { await eliminarCancion(c.id) }
-                    setCola([])
-                  }
-                }}
-                className="bg-red-500 px-3 py-1 rounded-lg text-sm hover:bg-red-600"
-              >
-                Vaciar cola
-              </button>
-            </div>
-            {cola.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">No hay canciones en cola</p>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {cola.map((cancion) => (
-                  <div key={cancion.id} className={`rounded-xl p-3 flex gap-3 items-center ${cancion.estado === 'reproduciendo' ? 'bg-green-900/50 border border-green-500' : 'bg-gray-700/50'}`}>
-                    <img src={cancion.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate text-sm">{cancion.titulo}</p>
-                      <p className="text-gray-400 text-xs">👤 {cancion.solicitado_por} • {cancion.estado}</p>
-                    </div>
-                    {cancion.estado === 'reproduciendo' && (
-                      <div className="flex gap-2">
-                        <button onClick={togglePause} className="bg-yellow-500 p-2 rounded-lg hover:bg-yellow-600">
-                          {pausado ? <Play className="w-4 h-4 text-black" /> : <Pause className="w-4 h-4 text-black" />}
-                        </button>
-                        <button onClick={skipSong} className="bg-red-500 p-2 rounded-lg hover:bg-red-600">
-                          <SkipForward className="w-4 h-4" />
-                        </button>
+              {searchResults.map((video) => (
+                <button
+                  key={video.id}
+                  onClick={() => addSongToQueue(video)}
+                  className="w-full p-3 bg-white/10 rounded-xl hover:bg-white/20 transition-all flex items-center gap-3 text-left"
+                >
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      className="w-16 h-12 object-cover rounded-lg"
+                    />
+                    {video.duration && (
+                      <div className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1 rounded">
+                        {video.duration}
                       </div>
                     )}
-                    {cancion.estado !== 'reproduciendo' && (
-                      <button onClick={async () => { await eliminarCancion(cancion.id); setCola(await obtenerCola(barId)) }} className="bg-red-500 p-2 rounded-lg hover:bg-red-600">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-medium text-sm truncate">{video.title}</div>
+                    <div className="text-purple-300 text-xs truncate">{video.channelTitle}</div>
+                    {video.viewCount && (
+                      <div className="text-purple-400 text-xs">{video.viewCount} vistas</div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Historial de transacciones */}
-          <div className="bg-gray-800/50 rounded-2xl p-4 mb-4 border border-gray-700">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold text-blue-400">📊 Historial</h3>
-              <button onClick={generarReporteBar} className="bg-blue-500 px-3 py-1 rounded-lg text-sm hover:bg-blue-600 flex items-center gap-1">
-                <Download className="w-4 h-4" /> Excel
-              </button>
-            </div>
-            {transacciones.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">No hay transacciones</p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {transacciones.slice(-10).reverse().map((t) => (
-                  <div key={t.id} className="bg-gray-700/50 rounded-lg p-2 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm">{t.descripcion || t.tipo}</p>
-                      <p className="text-xs text-gray-400">{new Date(t.creado_en).toLocaleDateString('es-CR')}</p>
-                    </div>
-                    <span className={t.tipo === 'compra_software' ? 'text-green-400' : 'text-red-400'}>
-                      {t.tipo === 'compra_software' ? '+' : '-'}{formatColones(t.total)}
-                    </span>
+                  <div className="flex-shrink-0 text-yellow-400">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <Branding />
-      </div>
-    )
-  }
-
-
-  // ================================================================
-  // MODO SUPER ADMIN
-  // ================================================================
-  if (modo === 'superadmin') {
-    if (!isAuthed) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-black to-red-900 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black rounded-3xl p-8 max-w-md w-full shadow-2xl border-2 border-red-500/30 text-center">
-            <Crown className="w-20 h-20 text-yellow-400 mx-auto mb-4" />
-            <h2 className="text-3xl font-black text-white mb-2">👑 SUPER ADMIN</h2>
-            <p className="text-gray-400 mb-6">Acceso exclusivo del proveedor</p>
-            
-            <input
-              type="password"
-              value={claveInput}
-              onChange={(e) => setClaveInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && claveInput === CLAVE_SUPER_ADMIN) setIsAuthed(true) }}
-              placeholder="Clave secreta..."
-              className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white text-center text-lg mb-4 focus:ring-2 focus:ring-red-500 focus:outline-none"
-              autoFocus
-            />
-            
-            <button
-              onClick={() => {
-                if (claveInput === CLAVE_SUPER_ADMIN) setIsAuthed(true)
-                else alert('❌ Clave incorrecta')
-              }}
-              className="w-full bg-gradient-to-r from-red-500 to-pink-500 text-white font-black py-4 rounded-2xl text-xl"
-            >
-              🔓 ENTRAR
-            </button>
-            <Branding />
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-red-900 text-white flex flex-col">
-        <div className="bg-gradient-to-r from-red-600 via-pink-600 to-purple-600 p-3 sticky top-0 z-10 flex-shrink-0">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-black">👑 SUPER ADMIN <span className="text-xs bg-green-500 px-2 py-0.5 rounded-full">V1.0.6</span></h1>
-              <p className="text-white/80 text-sm">Panel de Control Principal</p>
-            </div>
-            <div className="flex gap-2 items-center">
-              <div className="bg-white/20 rounded-xl px-3 py-1">
-                <p className="text-xs">🏢 Bares</p>
-                <p className="text-xl font-black text-center">{bares.length}</p>
-              </div>
-              <button onClick={() => setIsAuthed(false)} className="bg-red-500 p-2 rounded-xl hover:bg-red-600">
-                <LogOut className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-
-        <div className="flex-1 p-4 max-w-6xl mx-auto w-full overflow-y-auto">
-          {/* Crear nuevo bar */}
-          <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 rounded-2xl p-4 mb-4 border border-purple-500/30">
-            <h3 className="text-lg font-bold text-purple-400 mb-3">➕ Crear Nuevo Bar</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                type="text"
-                value={nuevoBarNombre}
-                onChange={(e) => setNuevoBarNombre(e.target.value)}
-                placeholder="Nombre del bar..."
-                className="bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
-              <input
-                type="text"
-                value={nuevoBarWhatsApp}
-                onChange={(e) => setNuevoBarWhatsApp(e.target.value)}
-                placeholder="WhatsApp (opcional)..."
-                className="bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
-              <input
-                type="email"
-                value={nuevoBarCorreo}
-                onChange={(e) => setNuevoBarCorreo(e.target.value)}
-                placeholder="Correo (opcional)..."
-                className="bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
-              <input
-                type="text"
-                value={nuevoBarClave}
-                onChange={(e) => setNuevoBarClave(e.target.value)}
-                placeholder="Clave admin (default: 1234)..."
-                className="bg-gray-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
-            </div>
-            <button
-              onClick={handleCrearBar}
-              disabled={creandoBar}
-              className="mt-3 w-full bg-gradient-to-r from-purple-500 to-pink-500 py-3 rounded-xl font-bold disabled:opacity-50"
-            >
-              {creandoBar ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : '🏢 Crear Bar'}
-            </button>
-          </div>
-
-          {/* Bar creado exitosamente */}
-          {nuevoBarCreado && (
-            <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 rounded-2xl p-4 mb-4 border border-green-500">
-              <h3 className="text-lg font-bold text-green-400 mb-3">✅ Bar Creado Exitosamente!</h3>
-              <p className="text-white mb-2"><strong>{nuevoBarCreado.bar.nombre}</strong></p>
-              <p className="text-gray-400 text-sm mb-3">Clave admin: <strong className="text-yellow-400">{nuevoBarCreado.claveAdmin}</strong></p>
-              <div className="space-y-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-400 w-20">Cliente:</span>
-                  <input readOnly value={getUrlCliente(nuevoBarCreado.bar.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                  <button onClick={() => copiarUrl(getUrlCliente(nuevoBarCreado.bar.id))} className="bg-green-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-400 w-20">Admin:</span>
-                  <input readOnly value={getUrlAdmin(nuevoBarCreado.bar.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                  <button onClick={() => copiarUrl(getUrlAdmin(nuevoBarCreado.bar.id))} className="bg-green-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-400 w-20">TV:</span>
-                  <input readOnly value={getUrlTV(nuevoBarCreado.bar.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                  <button onClick={() => copiarUrl(getUrlTV(nuevoBarCreado.bar.id))} className="bg-green-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                </div>
-              </div>
-              <button onClick={() => setNuevoBarCreado(null)} className="w-full bg-gray-600 py-2 rounded-xl text-sm">Cerrar</button>
-            </div>
-          )}
-
-          {/* Vender paquetes de créditos */}
-          <div className="bg-gradient-to-r from-yellow-900/50 to-orange-900/50 rounded-2xl p-4 mb-4 border border-yellow-500/30">
-            <h3 className="text-lg font-bold text-yellow-400 mb-3">💰 Vender Paquetes de Créditos</h3>
-            <p className="text-gray-400 text-sm mb-3">Precio por crédito: {formatColones(PRECIO_COMPRA_CREDITO)} | Venta sugerida: {formatColones(PRECIO_VENTA_CREDITO)}</p>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {[
-                { creditos: 50, precio: 2000 },
-                { creditos: 100, precio: 4000 },
-                { creditos: 200, precio: 8000 },
-                { creditos: 500, precio: 20000 },
-                { creditos: 1000, precio: 40000 }
-              ].map((paquete) => (
-                <button
-                  key={paquete.creditos}
-                  onClick={async () => {
-                    if (!barExpandido) { alert('❌ Selecciona un bar primero'); return }
-                    try {
-                      const barActual = bares.find(b => b.id === barExpandido)
-                      if (!barActual) return
-                      await supabase.from('bares').update({ 
-                        creditos_disponibles: (barActual.creditos_disponibles || 0) + paquete.creditos 
-                      }).eq('id', barExpandido)
-                      await supabase.from('transacciones').insert([{
-                        bar_id: barExpandido, tipo: 'compra_software',
-                        cantidad: paquete.creditos, precio_unitario: PRECIO_COMPRA_CREDITO,
-                        total: paquete.precio, descripcion: `💰 Paquete ${paquete.creditos} créditos`
-                      }])
-                      const baresData = await obtenerTodosLosBares()
-                      setBares(baresData)
-                      const transData = await obtenerTodasTransacciones()
-                      setTodasTransacciones(transData)
-                      alert(`✅ ${paquete.creditos} créditos vendidos a ${barActual.nombre}!\nTotal: ${formatColones(paquete.precio)}`)
-                    } catch { alert('❌ Error') }
-                  }}
-                  className="bg-gradient-to-r from-yellow-600 to-orange-600 p-3 rounded-xl hover:scale-105 transition-transform"
-                >
-                  <p className="text-2xl font-black">{paquete.creditos}</p>
-                  <p className="text-xs">créditos</p>
-                  <p className="text-sm font-bold mt-1">{formatColones(paquete.precio)}</p>
                 </button>
               ))}
             </div>
           </div>
+        )}
 
-
-          {/* Lista de bares */}
-          <div className="bg-gray-800/50 rounded-2xl p-4 mb-4 border border-gray-700">
-            <h3 className="text-lg font-bold text-blue-400 mb-3">🏢 Lista de Bares ({bares.length})</h3>
-            {bares.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">No hay bares creados</p>
-            ) : (
-              <div className="space-y-2">
-                {bares.map((b) => (
-                  <div key={b.id} className="bg-gray-700/50 rounded-xl overflow-hidden">
-                    <div 
-                      className="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-600/50"
-                      onClick={() => setBarExpandido(barExpandido === b.id ? null : b.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${b.activo !== false ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <div>
-                          <p className="font-bold">{b.nombre}</p>
-                          <p className="text-gray-400 text-xs">Creado: {new Date(b.creado_en).toLocaleDateString('es-CR')}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="bg-yellow-500/20 rounded-lg px-3 py-1">
-                          <p className="text-xs text-yellow-400">💳 Créditos</p>
-                          <p className="text-xl font-black text-center">{b.creditos_disponibles || 0}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {barExpandido === b.id && (
-                      <div className="p-3 border-t border-gray-600 bg-gray-800/50">
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 w-20">Cliente:</span>
-                            <input readOnly value={getUrlCliente(b.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                            <button onClick={() => copiarUrl(getUrlCliente(b.id))} className="bg-blue-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 w-20">Admin:</span>
-                            <input readOnly value={getUrlAdmin(b.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                            <button onClick={() => copiarUrl(getUrlAdmin(b.id))} className="bg-blue-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 w-20">TV:</span>
-                            <input readOnly value={getUrlTV(b.id)} className="flex-1 bg-gray-700 rounded-lg px-3 py-2 text-sm text-white truncate" />
-                            <button onClick={() => copiarUrl(getUrlTV(b.id))} className="bg-blue-500 p-2 rounded-lg"><Copy className="w-4 h-4" /></button>
-                          </div>
-                        </div>
-                        {b.whatsapp && <p className="text-gray-400 text-sm">📱 WhatsApp: {b.whatsapp}</p>}
-                        {b.correo && <p className="text-gray-400 text-sm">📧 Correo: {b.correo}</p>}
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={async () => {
-                              await actualizarEstadoBar(b.id, !b.activo)
-                              setBares(await obtenerTodosLosBares())
-                            }}
-                            className={`flex-1 py-2 rounded-lg font-bold ${b.activo !== false ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
-                          >
-                            {b.activo !== false ? '⏸️ Desactivar' : '▶️ Activar'}
-                          </button>
-                          <button
-                            onClick={() => setBarParaEliminar(b)}
-                            className="bg-red-700 px-4 py-2 rounded-lg font-bold hover:bg-red-800"
-                          >
-                            🗑️ Eliminar
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+        {searchError && (
+          <div className="text-center py-8">
+            <p className="text-purple-300">{searchError}</p>
           </div>
+        )}
+
+        {searchQuery.length < 2 && searchResults.length === 0 && (
+          <div className="text-center py-12">
+            <div className="w-20 h-20 mx-auto mb-4 bg-white/10 rounded-full flex items-center justify-center">
+              <svg className="w-10 h-10 text-purple-300" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+              </svg>
+            </div>
+            <p className="text-purple-200 text-lg mb-2">Busca tu cancion favorita</p>
+            <p className="text-purple-400 text-sm">Escribe el nombre de la cancion o artista</p>
+          </div>
+        )}
 
 
-          {/* Reporte de ventas */}
-          <div className="bg-gray-800/50 rounded-2xl p-4 mb-4 border border-gray-700">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold text-green-400">📊 Reporte de Ventas</h3>
-              <button onClick={generarReporteVentas} className="bg-green-500 px-3 py-1 rounded-lg text-sm hover:bg-green-600 flex items-center gap-1">
-                <Download className="w-4 h-4" /> Excel
-              </button>
-            </div>
-            <div className="flex gap-2 mb-3 flex-wrap">
-              <button onClick={() => setFiltroPeriodo('hoy')} className={`px-3 py-1 rounded-lg text-sm ${filtroPeriodo === 'hoy' ? 'bg-green-500' : 'bg-gray-600'}`}>Hoy</button>
-              <button onClick={() => setFiltroPeriodo('semana')} className={`px-3 py-1 rounded-lg text-sm ${filtroPeriodo === 'semana' ? 'bg-green-500' : 'bg-gray-600'}`}>Semana</button>
-              <button onClick={() => setFiltroPeriodo('mes')} className={`px-3 py-1 rounded-lg text-sm ${filtroPeriodo === 'mes' ? 'bg-green-500' : 'bg-gray-600'}`}>Mes</button>
-              <button onClick={() => setFiltroPeriodo('todo')} className={`px-3 py-1 rounded-lg text-sm ${filtroPeriodo === 'todo' ? 'bg-green-500' : 'bg-gray-600'}`}>Todo</button>
-            </div>
-            
-            {/* Resumen */}
-            {(() => {
-              let transFiltradas = todasTransacciones.filter(t => t.tipo === 'compra_software')
-              const ahora = new Date()
-              if (filtroPeriodo === 'hoy') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en).toDateString() === ahora.toDateString())
-              else if (filtroPeriodo === 'semana') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en) >= new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000))
-              else if (filtroPeriodo === 'mes') transFiltradas = transFiltradas.filter(t => new Date(t.creado_en) >= new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000))
-              
-              const totalCreditos = transFiltradas.reduce((sum, t) => sum + t.cantidad, 0)
-              const totalVentas = transFiltradas.reduce((sum, t) => sum + (t.cantidad * PRECIO_COMPRA_CREDITO), 0)
-              
-              return (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-green-900/30 rounded-xl p-3 text-center">
-                    <p className="text-gray-400 text-xs">Transacciones</p>
-                    <p className="text-2xl font-black text-green-400">{transFiltradas.length}</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        {songs.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-purple-200 text-sm mb-3 uppercase tracking-wide flex items-center gap-2">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+              </svg>
+              Cola de Reproduccion ({songs.filter(s => s.status === 'pending').length})
+            </h3>
+            <div className="space-y-2">
+              {songs.filter(s => s.status === 'pending').slice(0, 5).map((song, index) => (
+                <div
+                  key={song.id}
+                  className={`p-3 rounded-xl flex items-center gap-3 ${
+                    index === 0 ? 'bg-yellow-400/20 border border-yellow-400/30' : 'bg-white/5'
+                  }`}
+                >
+                  <div className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                    {index + 1}
                   </div>
-                  <div className="bg-yellow-900/30 rounded-xl p-3 text-center">
-                    <p className="text-gray-400 text-xs">Créditos</p>
-                    <p className="text-2xl font-black text-yellow-400">{totalCreditos}</p>
-                  </div>
-                  <div className="bg-blue-900/30 rounded-xl p-3 text-center">
-                    <p className="text-gray-400 text-xs">Total</p>
-                    <p className="text-2xl font-black text-blue-400">{formatColones(totalVentas)}</p>
+                  <img
+                    src={song.thumbnail}
+                    alt={song.title}
+                    className="w-10 h-10 object-cover rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm truncate">{song.title}</div>
+                    <div className="text-purple-300 text-xs">
+                      {song.requesterName}{song.requesterTable && ` - Mesa ${song.requesterTable}`}
+                    </div>
                   </div>
                 </div>
-              )
-            })()}
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {currentlyPlaying && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black via-purple-900/98 to-transparent p-4 pt-8">
+          <div className="max-w-lg mx-auto">
+            <div className="bg-black/50 backdrop-blur-lg rounded-2xl p-3 border border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="relative w-16 h-12 rounded-lg overflow-hidden">
+                  <img
+                    src={currentlyPlaying.thumbnail}
+                    alt={currentlyPlaying.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium truncate">{currentlyPlaying.title}</div>
+                  <div className="text-purple-300 text-xs">
+                    Reproduciendo ahora - {currentlyPlaying.requesterName}
+                  </div>
+                </div>
+              </div>
+              <div id="youtube-player" className="hidden"></div>
+            </div>
           </div>
         </div>
-        <Branding />
-      </div>
-    )
-  }
+      )}
 
-  // Modo no reconocido
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-red-900 via-pink-900 to-purple-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center">
-        <h2 className="text-2xl font-bold mb-4">❌ Modo no reconocido</h2>
-        <p className="text-gray-600 mb-4">Modo: {modo}</p>
-        <button onClick={() => window.location.href = '/'} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-3 rounded-xl">🏠 Ir al inicio</button>
-        <Branding />
-      </div>
+      {songs.filter(s => s.status === 'pending').length > 0 && (
+        <button
+          onClick={() => setStep('queue')}
+          className="fixed bottom-4 right-4 z-20 bg-yellow-400 text-purple-900 font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+          </svg>
+          {songs.filter(s => s.status === 'pending').length}
+        </button>
+      )}
     </div>
-  )
-}
+  );
 
-// Modal para confirmar eliminación de bar
-const ModalEliminarBar = ({ bar, onConfirm, onCancel }: { bar: Bar | null, onConfirm: () => void, onCancel: () => void }) => {
-  if (!bar) return null
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full border-2 border-red-500">
-        <h3 className="text-xl font-bold text-red-400 mb-4">⚠️ ¿Eliminar bar?</h3>
-        <p className="text-white mb-2">Estás a punto de eliminar:</p>
-        <p className="text-yellow-400 font-bold text-lg mb-4">{bar.nombre}</p>
-        <p className="text-gray-400 text-sm mb-6">Esta acción no se puede deshacer. Se eliminarán todos los datos asociados.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 bg-gray-600 py-3 rounded-xl font-bold hover:bg-gray-500">Cancelar</button>
-          <button onClick={onConfirm} className="flex-1 bg-red-500 py-3 rounded-xl font-bold hover:bg-red-600">Eliminar</button>
+
+
+
+
+
+
+
+
+  const renderQueueStep = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
+      <div className="sticky top-0 z-20 bg-purple-900/95 backdrop-blur-lg border-b border-white/10">
+        <div className="p-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setStep('search')}
+              className="text-white p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex-1">
+              <h2 className="text-white font-bold text-lg">Cola de Reproduccion</h2>
+              <p className="text-purple-300 text-sm">{songs.filter(s => s.status === 'pending').length} canciones en espera</p>
+            </div>
+            <div className="text-right">
+              <div className="text-yellow-400 font-bold text-xl">{credits}</div>
+              <div className="text-purple-300 text-xs">Creditos</div>
+            </div>
+          </div>
         </div>
       </div>
+
+      <div className="p-4 pb-8">
+        {currentlyPlaying && (
+          <div className="mb-6">
+            <h3 className="text-purple-200 text-sm mb-3 uppercase tracking-wide">Reproduciendo Ahora</h3>
+            <div className="bg-gradient-to-r from-yellow-400/20 to-orange-500/20 rounded-xl p-4 border border-yellow-400/30">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <img
+                    src={currentlyPlaying.thumbnail}
+                    alt={currentlyPlaying.title}
+                    className="w-20 h-14 object-cover rounded-lg"
+                  />
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
+                    <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-white font-medium">{currentlyPlaying.title}</div>
+                  <div className="text-purple-300 text-sm">{currentlyPlaying.channelTitle}</div>
+                  <div className="text-yellow-400 text-xs mt-1">
+                    Solicitada por {currentlyPlaying.requesterName}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {nextSongs.length > 0 && (
+          <div>
+            <h3 className="text-purple-200 text-sm mb-3 uppercase tracking-wide">Siguientes</h3>
+            <div className="space-y-2">
+              {nextSongs.map((song, index) => (
+                <div
+                  key={song.id}
+                  className="bg-white/10 rounded-xl p-3 flex items-center gap-3"
+                >
+                  <div className="w-8 h-8 bg-purple-600/50 rounded-full flex items-center justify-center text-white font-bold">
+                    {index + 1}
+                  </div>
+                  <img
+                    src={song.thumbnail}
+                    alt={song.title}
+                    className="w-12 h-12 object-cover rounded-lg"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm truncate">{song.title}</div>
+                    <div className="text-purple-300 text-xs truncate">{song.channelTitle}</div>
+                    <div className="text-purple-400 text-xs">
+                      {song.requesterName}{song.requesterTable && ` - Mesa ${song.requesterTable}`}
+                    </div>
+                  </div>
+                  <div className="text-purple-400 text-xs">
+                    {formatTimeAgo(song.addedAt)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {songs.filter(s => s.status === 'played').length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-purple-200 text-sm mb-3 uppercase tracking-wide">Recien Reproducidas</h3>
+            <div className="space-y-2 opacity-60">
+              {songs.filter(s => s.status === 'played').slice(-5).reverse().map((song) => (
+                <div
+                  key={song.id}
+                  className="bg-white/5 rounded-xl p-3 flex items-center gap-3"
+                >
+                  <svg className="w-5 h-5 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                  <img
+                    src={song.thumbnail}
+                    alt={song.title}
+                    className="w-10 h-10 object-cover rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm truncate">{song.title}</div>
+                    <div className="text-purple-300 text-xs">{song.requesterName}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {songs.length === 0 && (
+          <div className="text-center py-12">
+            <div className="w-20 h-20 mx-auto mb-4 bg-white/10 rounded-full flex items-center justify-center">
+              <svg className="w-10 h-10 text-purple-300" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+              </svg>
+            </div>
+            <p className="text-purple-200 text-lg mb-2">Cola vacia</p>
+            <p className="text-purple-400 text-sm">Busca canciones para agregarlas a la cola</p>
+          </div>
+        )}
+      </div>
+
+      <div className="fixed bottom-4 left-4 right-4 z-20">
+        <button
+          onClick={() => setStep('search')}
+          className="w-full py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          Buscar Mas Canciones
+        </button>
+      </div>
+
+      {currentlyPlaying && (
+        <div id="youtube-player" className="hidden"></div>
+      )}
     </div>
-  )
-}
+  );
 
-// Wrapper con Suspense
-export default function Home() {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <RockolaContent />
-      <ModalEliminarBar 
-        bar={barParaEliminar}
-        onConfirm={async () => {
-          if (barParaEliminar) {
-            await eliminarBar(barParaEliminar.id)
-            setBares(await obtenerTodosLosBares())
-            setBarParaEliminar(null)
-          }
-        }}
-        onCancel={() => setBarParaEliminar(null)}
-      />
-    </Suspense>
-  )
+    <>
+      {step === 'venue' && renderVenueStep()}
+      {step === 'name' && renderNameStep()}
+      {step === 'credits' && renderCreditsStep()}
+      {step === 'search' && renderSearchStep()}
+      {step === 'queue' && renderQueueStep()}
+    </>
+  );
 }
-
-
