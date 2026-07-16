@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+import { client, initDatabase } from '@/lib/turso'
+import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,105 +16,78 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
     }
 
-    // Obtener datos actuales del bar
-    const barRes = await fetch(`${SUPABASE_URL}/rest/v1/bares?id=eq.${bar_id}`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      }
-    })
-    const barData = await barRes.json()
-    const bar = barData[0]
+    await initDatabase()
 
-    if (!bar) {
+    // Obtener datos actuales del bar
+    const barRes = await client.execute({
+      sql: "SELECT creditos_disponibles, precio_compra FROM bares WHERE id = ?",
+      args: [bar_id]
+    })
+
+    if (barRes.rows.length === 0) {
       return NextResponse.json({ error: 'Bar no encontrado' }, { status: 404 })
     }
 
+    const bar = barRes.rows[0]
+    const creditosDisponibles = Number(bar.creditos_disponibles || 0)
+
     // Obtener instancia rockola
-    const instanciaRes = await fetch(`${SUPABASE_URL}/rest/v1/instancias_rockola?bar_id=eq.${bar_id}`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      }
+    const instanciaRes = await client.execute({
+      sql: "SELECT creditos_pantalla FROM instancias_rockola WHERE bar_id = ?",
+      args: [bar_id]
     })
-    const instanciaData = await instanciaRes.json()
-    const instancia = instanciaData[0]
+
+    const creditosPantallaActual = instanciaRes.rows.length > 0 ? Number(instanciaRes.rows[0].creditos_pantalla || 0) : 0
 
     // Crear transacción
-    await fetch(`${SUPABASE_URL}/rest/v1/transacciones`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
+    const transId = crypto.randomUUID()
+    const precioCompra = Number(bar.precio_compra || 40)
+    await client.execute({
+      sql: `INSERT INTO transacciones (id, bar_id, tipo, cantidad, precio_unitario, total, descripcion, creado_en)
+            VALUES (?, ?, 'compra_software', ?, ?, ?, ?, ?)`,
+      args: [
+        transId,
         bar_id,
-        tipo: 'compra_software',
         cantidad,
-        precio_unitario: bar.precio_compra,
-        total: cantidad * bar.precio_compra,
-        descripcion: `Transferencia de ${cantidad} créditos a pantalla`
-      })
+        precioCompra,
+        cantidad * precioCompra,
+        `Transferencia de ${cantidad} créditos a pantalla`,
+        new Date().toISOString()
+      ]
     })
 
     // Actualizar créditos del bar (descontar)
-    await fetch(`${SUPABASE_URL}/rest/v1/bares?id=eq.${bar_id}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        creditos_disponibles: (bar.creditos_disponibles || 0) - cantidad
-      })
+    const nuevosCreditosDisponibles = creditosDisponibles - cantidad
+    await client.execute({
+      sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
+      args: [nuevosCreditosDisponibles, bar_id]
     })
 
     // Actualizar créditos de la instancia rockola (sumar)
-    const nuevosCreditosPantalla = (instancia?.creditos_pantalla || 0) + cantidad
+    const nuevosCreditosPantalla = creditosPantallaActual + cantidad
     
-    if (instancia) {
-      await fetch(`${SUPABASE_URL}/rest/v1/instancias_rockola?bar_id=eq.${bar_id}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          creditos_pantalla: nuevosCreditosPantalla
-        })
+    if (instanciaRes.rows.length > 0) {
+      await client.execute({
+        sql: "UPDATE instancias_rockola SET creditos_pantalla = ? WHERE bar_id = ?",
+        args: [nuevosCreditosPantalla, bar_id]
       })
     } else {
       // Crear instancia si no existe
-      await fetch(`${SUPABASE_URL}/rest/v1/instancias_rockola`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          bar_id,
-          creditos_pantalla: cantidad
-        })
+      await client.execute({
+        sql: "INSERT INTO instancias_rockola (id, bar_id, creditos_pantalla, volumen, pausado, skip_requested) VALUES (?, ?, ?, 50, 0, 0)",
+        args: [crypto.randomUUID(), bar_id, nuevosCreditosPantalla]
       })
     }
 
     return NextResponse.json({
       success: true,
       message: `Transferidos ${cantidad} créditos exitosamente`,
-      creditos_bar: (bar.creditos_disponibles || 0) - cantidad,
+      creditos_bar: nuevosCreditosDisponibles,
       creditos_pantalla: nuevosCreditosPantalla
     })
 
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error desconocido'
-    return NextResponse.json({ error: message }, { status: 500 })
+  } catch (error: any) {
+    console.error('Error in transferir route:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

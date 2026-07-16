@@ -1,43 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { client, initDatabase } from '@/lib/turso'
+import crypto from 'crypto'
 
-// Configuración de Supabase
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-
-// Helper para hacer peticiones a Supabase
-async function supabaseFetch(table: string, options: {
-  method?: string
-  body?: Record<string, unknown>
-  query?: Record<string, string>
-} = {}) {
-  const { method = 'GET', body, query = {} } = options
-  
-  const queryParams = new URLSearchParams({
-    ...query,
-    select: '*'
-  }).toString()
-
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${queryParams}`
-
-  const headers: Record<string, string> = {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  }
-
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  })
-
-  if (!response.ok) {
-    throw new Error(`Supabase error: ${response.statusText}`)
-  }
-
-  return response.json()
-}
+export const dynamic = 'force-dynamic'
 
 // GET - Obtener datos del bar y rockola
 export async function GET(request: NextRequest) {
@@ -49,24 +14,45 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await initDatabase()
+    
     // Obtener datos del bar
-    const barData = await supabaseFetch('2 de enero', {
-      query: { id: `eq.${barId}` }
+    const barRes = await client.execute({
+      sql: "SELECT * FROM bares WHERE id = ?",
+      args: [barId]
     })
-
+    
     // Obtener instancia de rockola
-    const rockolaData = await supabaseFetch('instancias_rockola', {
-      query: { bar_id: `eq.${barId}` }
+    const rockolaRes = await client.execute({
+      sql: "SELECT * FROM instancias_rockola WHERE bar_id = ?",
+      args: [barId]
     })
+    
+    const bar = barRes.rows[0] ? {
+      ...barRes.rows[0],
+      activo: barRes.rows[0].activo === 1 || barRes.rows[0].activo === true || barRes.rows[0].activo === 'true',
+      saldo_saas: Number(barRes.rows[0].creditos_disponibles || 0),
+      creditos_disponibles: Number(barRes.rows[0].creditos_disponibles || 0),
+      creditos_pantalla: Number(barRes.rows[0].creditos_pantalla || 0),
+      precio_compra: Number(barRes.rows[0].precio_compra || 0),
+      precio_venta: Number(barRes.rows[0].precio_venta || 0)
+    } : null
+
+    const rockola = rockolaRes.rows[0] ? {
+      ...rockolaRes.rows[0],
+      creditos_pantalla: Number(rockolaRes.rows[0].creditos_pantalla || 0),
+      volumen: Number(rockolaRes.rows[0].volumen || 50),
+      pausado: rockolaRes.rows[0].pausado === 1 || rockolaRes.rows[0].pausado === true || rockolaRes.rows[0].pausado === 'true',
+      skip_requested: rockolaRes.rows[0].skip_requested === 1 || rockolaRes.rows[0].skip_requested === true || rockolaRes.rows[0].skip_requested === 'true'
+    } : null
 
     return NextResponse.json({
-      bar: barData[0] || null,
-      rockola: rockolaData[0] || null
+      bar,
+      rockola
     })
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
+  } catch (error: any) {
     console.error('Error fetching data:', error)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
 
@@ -74,7 +60,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { bar_id, cantidad, clave } = body as { bar_id: string; cantidad: number; clave: string }
+    const { bar_id, cantidad, clave } = body
 
     // Verificar clave de administrador
     if (clave !== '1234') {
@@ -85,52 +71,63 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
     }
 
+    await initDatabase()
+
     // Obtener datos actuales del bar
-    const barData = await supabaseFetch('2 de enero', {
-      query: { id: `eq.${bar_id}` }
+    const barRes = await client.execute({
+      sql: "SELECT creditos_disponibles, precio_compra, precio_venta FROM bares WHERE id = ?",
+      args: [bar_id]
     })
 
-    if (!barData[0]) {
+    if (barRes.rows.length === 0) {
       return NextResponse.json({ error: 'Bar no encontrado' }, { status: 404 })
     }
 
-    const saldoActual = (barData[0] as { saldo_saas?: number }).saldo_saas || 0
+    const bar = barRes.rows[0]
+    const saldoActual = Number(bar.creditos_disponibles || 0)
 
     if (cantidad > saldoActual) {
       return NextResponse.json({ error: 'Saldo insuficiente en bolsa SaaS' }, { status: 400 })
     }
 
-    // Actualizar saldo del bar (descontar)
-    const updateBarUrl = `${SUPABASE_URL}/rest/v1/2 de enero?id=eq.${bar_id}`
-    await fetch(updateBarUrl, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify({ saldo_saas: saldoActual - cantidad })
-    })
-
     // Obtener créditos actuales de la TV
-    const rockolaData = await supabaseFetch('instancias_rockola', {
-      query: { bar_id: `eq.${bar_id}` }
+    const rockolaRes = await client.execute({
+      sql: "SELECT creditos_pantalla FROM instancias_rockola WHERE bar_id = ?",
+      args: [bar_id]
     })
 
-    const creditosActuales = (rockolaData[0] as { creditos_pantalla?: number })?.creditos_pantalla || 0
+    const creditosActuales = rockolaRes.rows.length > 0 ? Number(rockolaRes.rows[0].creditos_pantalla || 0) : 0
+
+    // Actualizar saldo del bar (descontar)
+    await client.execute({
+      sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
+      args: [saldoActual - cantidad, bar_id]
+    })
 
     // Actualizar créditos de la TV (sumar)
-    const updateRockolaUrl = `${SUPABASE_URL}/rest/v1/instancias_rockola?bar_id=eq.${bar_id}`
-    await fetch(updateRockolaUrl, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify({ creditos_pantalla: creditosActuales + cantidad })
+    if (rockolaRes.rows.length > 0) {
+      await client.execute({
+        sql: "UPDATE instancias_rockola SET creditos_pantalla = ? WHERE bar_id = ?",
+        args: [creditosActuales + cantidad, bar_id]
+      })
+    } else {
+      await client.execute({
+        sql: "INSERT INTO instancias_rockola (id, bar_id, creditos_pantalla, volumen, pausado, skip_requested) VALUES (?, ?, ?, 50, 0, 0)",
+        args: [crypto.randomUUID(), bar_id, cantidad]
+      })
+    }
+
+    // Registrar transacción
+    await client.execute({
+      sql: `INSERT INTO transacciones (id, bar_id, tipo, cantidad, precio_unitario, total, descripcion, creado_en)
+            VALUES (?, ?, 'acreditacion', ?, 0, 0, ?, ?)`,
+      args: [
+        crypto.randomUUID(),
+        bar_id,
+        cantidad,
+        `Transferencia de ${cantidad} créditos a pantalla`,
+        new Date().toISOString()
+      ]
     })
 
     return NextResponse.json({
@@ -139,9 +136,8 @@ export async function POST(request: NextRequest) {
       nuevo_saldo: saldoActual - cantidad,
       nuevos_creditos_tv: creditosActuales + cantidad
     })
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
+  } catch (error: any) {
     console.error('Error transferring credits:', error)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
