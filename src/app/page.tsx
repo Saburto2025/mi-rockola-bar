@@ -9,7 +9,7 @@ import {
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
   Plus, Minus, LogOut, Copy, Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
@@ -87,6 +87,10 @@ export default function RockolaSaaS() {
   const playerRef = useRef<any>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
+  // ============= ESTADOS DE CONTROL E INTERACCIÓN =============
+  const [controlInstancia, setControlInstancia] = useState<any>(null)
+  const [tvReady, setTvReady] = useState(false)
+
   // ============= URL ACTUAL =============
   const [currentUrl, setCurrentUrl] = useState('')
 
@@ -149,6 +153,23 @@ export default function RockolaSaaS() {
       const transData = await obtenerTransacciones(id)
       setTransacciones(transData)
 
+      // Cargar control de reproducción de la base de datos
+      try {
+        const ctrl = await obtenerInstanciaControl(id)
+        if (ctrl) {
+          setControlInstancia(ctrl)
+          setPausado(ctrl.pausado)
+          setVolumen(ctrl.volumen)
+        } else {
+          const nuevoCtrl = await crearInstanciaControl(id)
+          setControlInstancia(nuevoCtrl)
+          setPausado(nuevoCtrl.pausado)
+          setVolumen(nuevoCtrl.volumen)
+        }
+      } catch (ctrlErr) {
+        console.error('Error cargando control de reproduccion:', ctrlErr)
+      }
+
       setConectado(true)
     } catch (err: any) {
       console.error('Error cargando datos:', err)
@@ -185,6 +206,18 @@ export default function RockolaSaaS() {
       },
       onTransaccionCambio: () => {
         if (barId) obtenerTransacciones(barId).then(setTransacciones)
+      },
+      onControlCambio: (ctrl) => {
+        setControlInstancia(ctrl)
+        setPausado(ctrl.pausado)
+        setVolumen(ctrl.volumen)
+
+        // Si el admin solicitó skip y estamos en modo TV, pasar a la siguiente
+        if (modo === 'tv' && ctrl.skip_requested) {
+          limpiarSkip(barId).then(() => {
+            reproducirSiguiente()
+          })
+        }
       }
     })
 
@@ -297,7 +330,20 @@ export default function RockolaSaaS() {
 
   const aprobarCancion = async (cancionId: string) => {
     try {
-      await actualizarEstadoCancion(cancionId, 'aprobada')
+      // Si no hay ninguna canción en reproducción, la pasamos directamente a 'reproduciendo'
+      const estaReproduciendoAlgo = cola.some(c => c.estado === 'reproduciendo')
+      const nuevoEstado = estaReproduciendoAlgo ? 'aprobada' : 'reproduciendo'
+
+      await actualizarEstadoCancion(cancionId, nuevoEstado)
+      
+      // Actualizar localmente de inmediato para mejorar la respuesta visual
+      setCola(prev => prev.map(c => c.id === cancionId ? { ...c, estado: nuevoEstado } : c))
+      if (!estaReproduciendoAlgo) {
+        const cancion = cola.find(c => c.id === cancionId)
+        if (cancion) {
+          setCancionActual({ ...cancion, estado: 'reproduciendo' })
+        }
+      }
     } catch (error) {
       console.error('Error aprobando:', error)
       alert('❌ Error al aprobar')
@@ -322,20 +368,31 @@ export default function RockolaSaaS() {
 
   // ============= REPRODUCCIÓN =============
   const reproducirSiguiente = useCallback(async () => {
-    const colaAprobada = cola.filter(c => c.estado === 'aprobada')
+    try {
+      const dbCola = await obtenerCola(barId)
+      const colaAprobada = dbCola.filter(c => c.estado === 'aprobada')
 
-    if (colaAprobada.length > 0) {
-      const siguiente = colaAprobada[0]
-      try {
+      if (colaAprobada.length > 0) {
+        const siguiente = colaAprobada[0]
         await actualizarEstadoCancion(siguiente.id, 'reproduciendo')
         setCancionActual(siguiente)
-      } catch (error) {
-        console.error('Error reproduciendo:', error)
+      } else {
+        setCancionActual(null)
       }
-    } else {
-      setCancionActual(null)
+    } catch (error) {
+      console.error('Error al reproducir la siguiente canción:', error)
+      // Fallback a cola local
+      const colaAprobada = cola.filter(c => c.estado === 'aprobada')
+      if (colaAprobada.length > 0) {
+        const siguiente = colaAprobada[0]
+        actualizarEstadoCancion(siguiente.id, 'reproduciendo')
+          .then(() => setCancionActual(siguiente))
+          .catch(console.error)
+      } else {
+        setCancionActual(null)
+      }
     }
-  }, [cola])
+  }, [barId, cola])
 
   const onVideoEnd = useCallback(async () => {
     if (cancionActual) {
@@ -353,24 +410,66 @@ export default function RockolaSaaS() {
     playerRef.current = event.target
     setPlayer(event.target)
     event.target.setVolume(volumen)
+    if (modo === 'tv' && tvReady) {
+      event.target.playVideo()
+    }
   }
 
-  const togglePause = () => {
-    if (player) {
-      if (pausado) {
-        player.playVideo()
-      } else {
-        player.pauseVideo()
+  const togglePause = async () => {
+    if (!barId) return
+    const nuevoEstadoPausa = !pausado
+    setPausado(nuevoEstadoPausa)
+
+    if (playerRef.current) {
+      try {
+        if (nuevoEstadoPausa) {
+          playerRef.current.pauseVideo()
+        } else {
+          playerRef.current.playVideo()
+        }
+      } catch (err) {
+        console.error('Error controlando pausa local:', err)
       }
-      setPausado(!pausado)
+    }
+
+    try {
+      await togglePausa(barId, nuevoEstadoPausa)
+    } catch (error) {
+      console.error('Error al pausar en la base de datos:', error)
     }
   }
 
-  const cambiarVolumen = (nuevoVolumen: number) => {
-    if (player) {
-      player.setVolume(nuevoVolumen)
-    }
+  const cambiarVolumen = async (nuevoVolumen: number) => {
+    if (!barId) return
     setVolumen(nuevoVolumen)
+
+    if (playerRef.current) {
+      try {
+        playerRef.current.setVolume(nuevoVolumen)
+      } catch (err) {
+        console.error('Error controlando volumen local:', err)
+      }
+    }
+
+    try {
+      await actualizarVolumen(barId, nuevoVolumen)
+    } catch (error) {
+      console.error('Error al actualizar volumen en la base de datos:', error)
+    }
+  }
+
+  const ejecutarSiguienteAdmin = async () => {
+    if (!barId) return
+    try {
+      if (cancionActual) {
+        await eliminarCancion(cancionActual.id)
+        setCancionActual(null)
+      } else {
+        reproducirSiguiente()
+      }
+    } catch (error) {
+      console.error('Error al pasar a la siguiente canción:', error)
+    }
   }
 
   // ============= TRANSACCIONES =============
@@ -452,10 +551,38 @@ export default function RockolaSaaS() {
 
   // ============= REPRODUCIR SIGUIENTE AUTOMÁTICAMENTE =============
   useEffect(() => {
-    if (modo === 'tv' && !cancionActual && cola.filter(c => c.estado === 'aprobada').length > 0) {
-      reproducirSiguiente()
+    if (modo === 'tv' && tvReady && !cancionActual) {
+      const colaAprobada = cola.filter(c => c.estado === 'aprobada')
+      if (colaAprobada.length > 0) {
+        reproducirSiguiente()
+      }
     }
-  }, [modo, cancionActual, cola, reproducirSiguiente])
+  }, [modo, tvReady, cancionActual, cola, reproducirSiguiente])
+
+  // ============= EFECTOS DE CONTROL DE REPRODUCCIÓN (TV) =============
+  useEffect(() => {
+    if (modo === 'tv' && playerRef.current) {
+      try {
+        if (pausado) {
+          playerRef.current.pauseVideo()
+        } else {
+          playerRef.current.playVideo()
+        }
+      } catch (err) {
+        console.error('Error controlando pausa/reproducción en TV:', err)
+      }
+    }
+  }, [pausado, modo])
+
+  useEffect(() => {
+    if (modo === 'tv' && playerRef.current) {
+      try {
+        playerRef.current.setVolume(volumen)
+      } catch (err) {
+        console.error('Error controlando volumen en TV:', err)
+      }
+    }
+  }, [volumen, modo])
 
   // ============= URLS EXCLUSIVAS =============
   const getUrlCliente = (barIdParam?: string) => {
@@ -639,7 +766,36 @@ export default function RockolaSaaS() {
   // ================================================================
   if (modo === 'tv') {
     return (
-      <div className="fixed inset-0 bg-black overflow-hidden">
+      <div className="fixed inset-0 bg-black overflow-hidden flex flex-col items-center justify-center">
+        {/* Overlay interactivo para cumplir la política de reproducción automática del navegador */}
+        {!tvReady && (
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-black to-blue-950 flex flex-col items-center justify-center z-50 p-6">
+            <div className="text-center p-8 max-w-md bg-gray-900/80 border border-purple-500/40 rounded-3xl backdrop-blur-md shadow-2xl space-y-6">
+              <div className="w-20 h-20 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center mx-auto animate-pulse">
+                <Play className="w-10 h-10 text-yellow-400 fill-yellow-400" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-3xl font-extrabold text-white tracking-wide">PANTALLA DE TV</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  Para permitir que la música y los videos se reproduzcan automáticamente con sonido, por favor presiona el botón de abajo.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setTvReady(true)
+                  const colaAprobada = cola.filter(c => c.estado === 'aprobada')
+                  if (!cancionActual && colaAprobada.length > 0) {
+                    reproducirSiguiente()
+                  }
+                }}
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:shadow-purple-500/25 active:scale-95 transition-all duration-150"
+              >
+                Activar Reproducción
+              </button>
+            </div>
+          </div>
+        )}
+
         {cancionActual ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <YouTube
@@ -1039,7 +1195,7 @@ export default function RockolaSaaS() {
                 {pausado ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                 {pausado ? 'Reanudar' : 'Pausar'}
               </button>
-              <button onClick={reproducirSiguiente} className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+              <button onClick={ejecutarSiguienteAdmin} className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2">
                 <SkipForward className="w-4 h-4" /> Siguiente
               </button>
             </div>
