@@ -280,11 +280,23 @@ export async function obtenerInstancia(barId: string) {
 
 export async function obtenerCola(barId: string) {
   await initDatabase();
-  const res = await client.execute({
+  
+  // Obtener canciones activas
+  const resActivas = await client.execute({
     sql: "SELECT * FROM canciones_cola WHERE bar_id = ? AND estado IN ('pendiente', 'aprobada', 'reproduciendo') ORDER BY posicion ASC, creado_en ASC",
     args: [barId],
   });
-  return res.rows.map(mapCancion);
+  
+  // Obtener las últimas 10 canciones completadas
+  const resCompletadas = await client.execute({
+    sql: "SELECT * FROM canciones_cola WHERE bar_id = ? AND estado = 'completada' ORDER BY creado_en DESC LIMIT 10",
+    args: [barId],
+  });
+  
+  const activas = resActivas.rows.map(mapCancion);
+  const completadas = resCompletadas.rows.map(mapCancion).reverse();
+  
+  return [...completadas, ...activas];
 }
 
 export async function agregarCancionYConsumir(barId: string, cancion: Omit<CancionCola, "id" | "creado_en" | "bar_id">) {

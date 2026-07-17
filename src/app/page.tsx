@@ -482,7 +482,7 @@ export default function RockolaSaaS() {
   const onVideoEnd = useCallback(async () => {
     if (cancionActual) {
       try {
-        await eliminarCancion(cancionActual.id)
+        await actualizarEstadoCancion(cancionActual.id, 'completada')
         setCancionActual(null)
         setTimeout(() => reproducirSiguiente(), 500)
       } catch (error) {
@@ -495,7 +495,7 @@ export default function RockolaSaaS() {
     console.error('YouTube Player Error:', event.data)
     if (cancionActual) {
       try {
-        await eliminarCancion(cancionActual.id)
+        await actualizarEstadoCancion(cancionActual.id, 'completada')
         setCancionActual(null)
         setTimeout(() => reproducirSiguiente(), 500)
       } catch (error) {
@@ -560,7 +560,7 @@ export default function RockolaSaaS() {
     if (!barId) return
     try {
       if (cancionActual) {
-        await eliminarCancion(cancionActual.id)
+        await actualizarEstadoCancion(cancionActual.id, 'completada')
         setCancionActual(null)
       } else {
         reproducirSiguiente()
@@ -1113,23 +1113,25 @@ export default function RockolaSaaS() {
               </div>
             )}
 
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold text-sm">{idx + 1}</span>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'completada').map((cancion, idx) => (
+                <div key={cancion.id} className={`p-2 rounded-lg flex items-center gap-2 ${cancion.estado === 'completada' ? 'bg-gray-800/40 opacity-55' : 'bg-gray-700'}`}>
+                  <span className="text-gray-400 w-5 text-center font-bold text-sm">
+                    {cancion.estado === 'completada' ? '✓' : idx + 1 - cola.filter(c => c.estado === 'completada').length}
+                  </span>
                   <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs truncate">{cancion.titulo}</p>
-                    <p className="text-xs text-gray-400">{cancion.solicitado_por}</p>
+                    <p className={`text-xs truncate ${cancion.estado === 'completada' ? 'line-through text-gray-500' : ''}`}>{cancion.titulo}</p>
+                    <p className="text-[10px] text-gray-400">Por: {cancion.solicitado_por} {cancion.estado === 'completada' && '(Reproducida)'}</p>
                   </div>
                 </div>
               ))}
               
               {cola.filter(c => c.estado === 'pendiente').length > 0 && (
-                <p className="text-yellow-400 text-xs py-1">⏳ Pendientes: {cola.filter(c => c.estado === 'pendiente').length}</p>
+                <p className="text-yellow-400 text-xs py-1">⏳ Pendientes de aprobación: {cola.filter(c => c.estado === 'pendiente').length}</p>
               )}
 
-              {cola.filter(c => c.estado !== 'reproduciendo').length === 0 && !cancionActual && (
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'completada').length === 0 && !cancionActual && (
                 <p className="text-gray-500 text-center py-2 text-sm">No hay videos en cola</p>
               )}
             </div>
@@ -1336,17 +1338,23 @@ export default function RockolaSaaS() {
               </div>
             )}
             <div className="space-y-1 max-h-none">
-              {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold">{idx + 1}</span>
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'completada').map((cancion, idx) => (
+                <div key={cancion.id} className={`p-2 rounded-lg flex items-center gap-2 ${cancion.estado === 'completada' ? 'bg-gray-800/40 opacity-55' : 'bg-gray-700'}`}>
+                  <span className="text-gray-400 w-5 text-center font-bold text-sm">
+                    {cancion.estado === 'completada' ? '✓' : idx + 1 - cola.filter(c => c.estado === 'completada').length}
+                  </span>
                   <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
-                  <p className="text-sm truncate flex-1">{cancion.titulo}</p>
-                  <button onClick={() => eliminarDeCola(cancion.id)} className="text-red-400 hover:text-red-300 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <p className={`text-sm truncate flex-1 ${cancion.estado === 'completada' ? 'line-through text-gray-500' : ''}`}>
+                    {cancion.titulo} {cancion.estado === 'completada' && <span className="text-xs text-gray-500 font-normal">(Reproducida)</span>}
+                  </p>
+                  {cancion.estado !== 'completada' && (
+                    <button onClick={() => eliminarDeCola(cancion.id)} className="text-red-400 hover:text-red-300 p-1">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               ))}
-              {cola.filter(c => c.estado === 'aprobada').length === 0 && !cancionActual && (
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'completada').length === 0 && !cancionActual && (
                 <p className="text-gray-500 text-center py-2">No hay videos en cola</p>
               )}
             </div>
