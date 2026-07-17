@@ -9,7 +9,7 @@ import {
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
   Plus, Minus, LogOut, Copy, Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, crearSolicitudRecarga, obtenerSolicitudesPendientes, aprobarSolicitudRecarga, rechazarSolicitudRecarga, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
@@ -62,6 +62,8 @@ export default function RockolaSaaS() {
   const [clienteRegistrado, setClienteRegistrado] = useState(false)
   const [modalRecarga, setModalRecarga] = useState(false)
   const [creditosRecarga, setCreditosRecarga] = useState('')
+  const [solicitudesRecarga, setSolicitudesRecarga] = useState<any[]>([])
+  const [montoRecargaColones, setMontoRecargaColones] = useState('')
 
   // ============= ESTADOS DE MODAL =============
   const [modalClienteAbierto, setModalClienteAbierto] = useState(false)
@@ -153,6 +155,12 @@ export default function RockolaSaaS() {
       const transData = await obtenerTransacciones(id)
       setTransacciones(transData)
 
+      // Cargar solicitudes de recarga pendientes para admin
+      if (modo === 'admin') {
+        const pends = await obtenerSolicitudesPendientes(id)
+        setSolicitudesRecarga(pends)
+      }
+
       // Cargar control de reproducción de la base de datos
       try {
         const ctrl = await obtenerInstanciaControl(id)
@@ -207,6 +215,9 @@ export default function RockolaSaaS() {
       onTransaccionCambio: () => {
         if (barId) obtenerTransacciones(barId).then(setTransacciones)
       },
+      onSolicitudesCambio: (pends) => {
+        setSolicitudesRecarga(pends)
+      },
       onControlCambio: (ctrl) => {
         setControlInstancia(ctrl)
         setPausado(ctrl.pausado)
@@ -227,6 +238,32 @@ export default function RockolaSaaS() {
       }
     }
   }, [modo, barId])
+
+  // Sincronizar créditos del cliente con la base de datos en tiempo real
+  useEffect(() => {
+    if (modo === 'cliente' && clienteRegistrado && nombreCliente && bar) {
+      let active = true
+      const syncCliente = async () => {
+        try {
+          const { obtenerOcrearCliente } = await import('@/lib/supabase')
+          const clientData = await obtenerOcrearCliente(bar.id, nombreCliente)
+          if (active) {
+            setCreditosCliente(clientData.creditos)
+          }
+        } catch (e) {
+          console.error("Error sincronizando cliente:", e)
+        }
+      }
+
+      syncCliente()
+      const interval = setInterval(syncCliente, 2500)
+
+      return () => {
+        active = false
+        clearInterval(interval)
+      }
+    }
+  }, [modo, clienteRegistrado, nombreCliente, bar])
 
   // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
   const buscarVideos = async () => {
@@ -298,10 +335,10 @@ export default function RockolaSaaS() {
   // ============= FUNCIONES DE COLA =============
   const agregarACola = async (video: VideoBusqueda) => {
     if (!bar) return
-    const precioCancion = bar.precio_venta || 1
-    
+    const precioCancion = bar.precio_venta || 100
+
     if (creditosCliente < precioCancion) {
-      alert(`❌ No tienes suficientes créditos. Necesitas ${precioCancion} créditos. Pide al administrador que te recargue.`)
+      alert(`❌ No tienes suficiente saldo. Necesitas ₡${precioCancion}. Pide al administrador que te recargue.`)
       return
     }
 
@@ -322,7 +359,12 @@ export default function RockolaSaaS() {
       // Descontar del saldo del cliente
       const nuevosCreditos = creditosCliente - precioCancion
       setCreditosCliente(nuevosCreditos)
-      
+
+      // Descontar saldo del cliente en la base de datos
+      const { obtenerOcrearCliente, actualizarCreditosCliente } = await import('@/lib/supabase')
+      const clientDb = await obtenerOcrearCliente(bar.id, nombreCliente)
+      await actualizarCreditosCliente(clientDb.id, clientDb.creditos - precioCancion)
+
       await supabase.from('transacciones').insert([{
         bar_id: bar.id,
         tipo: 'consumo',
@@ -335,7 +377,7 @@ export default function RockolaSaaS() {
       }])
 
       // NO limpiar búsqueda para permitir agregar más canciones
-      alert(`✅ "${video.snippet.title.substring(0, 30)}..." agregado a la cola. Créditos restantes: ${nuevosCreditos}`)
+      alert(`✅ "${video.snippet.title.substring(0, 30)}..." agregado a la cola. Saldo restante: ₡${nuevosCreditos}`)
     } catch (error) {
       console.error('Error agregando video:', error)
       alert('❌ Error al agregar video')
@@ -493,7 +535,7 @@ export default function RockolaSaaS() {
       await comprarCreditosProveedor(barSeleccionado.id, cantidad, precioUnitario)
       // Usar isRefresh=true para evitar parpadeo
       await cargarDatos(undefined, true)
-      alert(`✅ Vendidos ${cantidad} créditos a $${precioUnitario} c/u = $${cantidad * precioUnitario}`)
+      alert(`✅ Vendidos ${cantidad} créditos a ₡${precioUnitario} c/u = ₡${cantidad * precioUnitario}`)
     } catch (error) {
       console.error('Error vendiendo créditos:', error)
       alert('❌ Error al vender créditos')
@@ -518,7 +560,7 @@ export default function RockolaSaaS() {
       // Usar isRefresh=true para evitar parpadeo
       await cargarDatos(undefined, true)
       setModalClienteAbierto(false)
-      alert(`✅ Vendidos ${creditosAVender} créditos a ${nombreClienteInput.trim()} = $${creditosAVender * bar.precio_venta}`)
+      alert(`✅ Vendidos ${creditosAVender} créditos a ${nombreClienteInput.trim()} = ₡${creditosAVender * bar.precio_venta}`)
     } catch (error: any) {
       console.error('Error vendiendo:', error)
       alert(error.message || '❌ Error al vender créditos')
@@ -651,7 +693,7 @@ export default function RockolaSaaS() {
     <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 ${modalClienteAbierto ? '' : 'hidden'}`}>
       <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
         <h3 className="text-xl font-bold text-gray-800 mb-4">📝 Nombre del Cliente</h3>
-        <p className="text-gray-600 mb-4">Vendiendo <strong>{creditosAVender} crédito{creditosAVender > 1 ? 's' : ''}</strong> (${bar ? creditosAVender * bar.precio_venta : 0})</p>
+        <p className="text-gray-600 mb-4">Vendiendo <strong>{creditosAVender} crédito{creditosAVender > 1 ? 's' : ''}</strong> (₡{bar ? creditosAVender * bar.precio_venta : 0})</p>
         <input
           type="text"
           value={nombreClienteInput}
@@ -684,37 +726,56 @@ export default function RockolaSaaS() {
   const ModalRecargaCreditos = () => (
     <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 ${modalRecarga ? '' : 'hidden'}`}>
       <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">💰 Recargar Créditos</h3>
-        <p className="text-gray-600 mb-4">Ingresa la cantidad de créditos que el administrador te ha vendido:</p>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">💰 Solicitar Recarga de Saldo</h3>
+        <p className="text-gray-600 mb-4 text-sm">Selecciona o ingresa la cantidad de colones que deseas solicitar al dueño del bar:</p>
+        
+        <div className="flex gap-2 flex-wrap mb-4 justify-center">
+          {[100, 300, 500, 1000, 2000].map(monto => (
+            <button
+              key={monto}
+              type="button"
+              onClick={() => setMontoRecargaColones(monto.toString())}
+              className={`px-3 py-2 rounded-xl font-bold border transition-colors ${montoRecargaColones === monto.toString() ? 'bg-green-600 border-green-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200'}`}
+            >
+              ₡{monto}
+            </button>
+          ))}
+        </div>
+
         <input
           type="number"
-          value={creditosRecarga}
-          onChange={(e) => setCreditosRecarga(e.target.value)}
-          placeholder="Cantidad de créditos..."
+          value={montoRecargaColones}
+          onChange={(e) => setMontoRecargaColones(e.target.value)}
+          placeholder="Monto en colones (₡)..."
           autoFocus
           className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none text-gray-900 bg-white"
         />
+
         <div className="flex gap-2">
           <button 
-            onClick={() => { setModalRecarga(false); setCreditosRecarga('') }}
+            onClick={() => { setModalRecarga(false); setMontoRecargaColones('') }}
             className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-colors"
           >
             Cancelar
           </button>
           <button 
-            onClick={() => {
-              const creditos = parseInt(creditosRecarga)
-              if (creditos > 0) {
-                setCreditosCliente(creditos)
-                setModalRecarga(false)
-                setCreditosRecarga('')
-                alert(`✅ Saldo actualizado a ${creditos} créditos`)
+            onClick={async () => {
+              const monto = parseInt(montoRecargaColones)
+              if (monto > 0 && bar && nombreCliente) {
+                try {
+                  await crearSolicitudRecarga(bar.id, nombreCliente, monto)
+                  setModalRecarga(false)
+                  setMontoRecargaColones('')
+                  alert(`✅ Solicitud de recarga enviada al administrador por ₡${monto}.`)
+                } catch (e: any) {
+                  alert(`❌ Error al solicitar recarga: ${e.message || 'Error desconocido'}`)
+                }
               }
             }}
-            disabled={!creditosRecarga || parseInt(creditosRecarga) <= 0}
+            disabled={!montoRecargaColones || parseInt(montoRecargaColones) <= 0}
             className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 rounded-xl transition-colors"
           >
-            Confirmar
+            Solicitar
           </button>
         </div>
       </div>
@@ -907,12 +968,6 @@ export default function RockolaSaaS() {
                 <p className="text-sm opacity-80">{bar?.nombre}</p>
               </div>
               <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setModalRecarga(true)}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-full font-bold text-lg flex items-center gap-2"
-                >
-                  💰 {creditosCliente} <Plus className="w-4 h-4" />
-                </button>
                 <button onClick={() => { setClienteRegistrado(false); setNombreCliente(''); setCreditosCliente(0) }} className="bg-black/20 p-2 rounded-lg hover:bg-black/30">
                   <LogOut className="w-5 h-5" />
                 </button>
@@ -927,7 +982,7 @@ export default function RockolaSaaS() {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-yellow-200 text-sm">MI SALDO</p>
-                <p className="text-4xl font-bold">{creditosCliente} créditos</p>
+                <p className="text-4xl font-bold">₡{creditosCliente}</p>
               </div>
               <button 
                 onClick={() => setModalRecarga(true)}
@@ -937,7 +992,7 @@ export default function RockolaSaaS() {
               </button>
             </div>
             <p className="text-yellow-200 text-sm mt-2">
-              💡 Cada canción cuesta {bar?.precio_venta || 1} créditos
+              💡 Cada canción cuesta ₡{bar?.precio_venta || 100}
             </p>
           </div>
 
@@ -986,7 +1041,7 @@ export default function RockolaSaaS() {
                           <span>•</span>
                           <span className="text-blue-400">{video.duracionFormateada}</span>
                           <span>•</span>
-                          <span className="text-yellow-400">{bar?.precio_venta || 1} créditos</span>
+                          <span className="text-yellow-400">₡{bar?.precio_venta || 100}</span>
                         </div>
                       </div>
                       <span className="bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded-lg font-bold text-sm">
@@ -1115,11 +1170,11 @@ export default function RockolaSaaS() {
             </div>
             <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-3 border border-blue-600">
               <p className="text-blue-300 text-xs">PRECIO COMPRA</p>
-              <p className="text-2xl font-bold text-white">${bar?.precio_compra || 0}</p>
+              <p className="text-2xl font-bold text-white">₡{bar?.precio_compra || 0}</p>
             </div>
             <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-3 border border-yellow-600">
               <p className="text-yellow-300 text-xs">PRECIO VENTA</p>
-              <p className="text-2xl font-bold text-white">${bar?.precio_venta || 0}</p>
+              <p className="text-2xl font-bold text-white">₡{bar?.precio_venta || 0}</p>
             </div>
           </div>
 
@@ -1129,20 +1184,73 @@ export default function RockolaSaaS() {
               <ShoppingCart className="w-5 h-5 text-green-400" />
               💰 Vender Créditos a Clientes
             </h3>
-            <p className="text-gray-400 text-sm mb-3">Cobra al cliente y dale sus créditos:</p>
+            <p className="text-gray-400 text-sm mb-3">Cobra al cliente y dale sus créditos (ventas en colones):</p>
             <div className="flex gap-2 flex-wrap">
-              {[1, 3, 5, 10, 20, 50].map(cant => (
-                <button
-                  key={cant}
-                  onClick={() => abrirModalCliente(cant)}
-                  disabled={!bar || cant > bar.creditos_disponibles}
-                  className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-lg font-bold transition-colors"
-                >
-                  {cant} cr. (${bar ? cant * bar.precio_venta : 0})
-                </button>
-              ))}
+              {[100, 300, 500, 1000, 2000].map(monto => {
+                const cantCreditos = bar ? Math.floor(monto / bar.precio_venta) : 0
+                return (
+                  <button
+                    key={monto}
+                    onClick={() => abrirModalCliente(cantCreditos)}
+                    disabled={!bar || cantCreditos > bar.creditos_disponibles || cantCreditos === 0}
+                    className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-lg font-bold transition-colors animate-pulse"
+                  >
+                    ₡{monto} ({cantCreditos} cr.)
+                  </button>
+                )
+              })}
             </div>
           </div>
+
+          {/* Solicitudes de recarga pendientes */}
+          {solicitudesRecarga.length > 0 && (
+            <div className="bg-yellow-900/30 rounded-xl p-4 border-2 border-yellow-500">
+              <h3 className="font-bold mb-3 text-yellow-400">⏳ Solicitudes de Recarga ({solicitudesRecarga.length})</h3>
+              <div className="space-y-2">
+                {solicitudesRecarga.map((sol) => {
+                  const cantCreditos = bar ? Math.floor(sol.monto / bar.precio_venta) : 0
+                  return (
+                    <div key={sol.id} className="bg-gray-800 p-3 rounded-lg flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-white">{sol.cliente_nombre}</p>
+                        <p className="text-sm text-gray-400">Solicita: <strong className="text-yellow-400">₡{sol.monto}</strong> ({cantCreditos} cr.)</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await aprobarSolicitudRecarga(sol.id)
+                              await cargarDatos(undefined, true)
+                              alert(`✅ Solicitud aprobada para ${sol.cliente_nombre}`)
+                            } catch (e: any) {
+                              alert(`❌ Error al aprobar: ${e.message || 'Error desconocido'}`)
+                            }
+                          }}
+                          className="bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-white"
+                        >
+                          <Check className="w-3.5 h-3.5" /> APROBAR
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await rechazarSolicitudRecarga(sol.id)
+                              await cargarDatos(undefined, true)
+                              alert(`❌ Solicitud rechazada`)
+                            } catch (e: any) {
+                              alert(`❌ Error al rechazar: ${e.message || 'Error desconocido'}`)
+                            }
+                          }}
+                          className="bg-red-600 hover:bg-red-500 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-white"
+                        >
+                          <X className="w-3.5 h-3.5" /> RECHAZAR
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Videos pendientes de aprobación */}
           {cola.filter(c => c.estado === 'pendiente').length > 0 && (
@@ -1184,7 +1292,7 @@ export default function RockolaSaaS() {
                 </div>
               </div>
             )}
-            <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="space-y-1 max-h-none">
               {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
                 <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
                   <span className="text-gray-400 w-5 text-center font-bold">{idx + 1}</span>
@@ -1312,11 +1420,11 @@ export default function RockolaSaaS() {
             </div>
             <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-4 border border-blue-600">
               <p className="text-blue-300 text-xs">PRECIO BASE</p>
-              <p className="text-2xl font-bold text-white">${precioBase}/cr</p>
+              <p className="text-2xl font-bold text-white">₡{precioBase}/cr</p>
             </div>
             <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-4 border border-yellow-600">
               <p className="text-yellow-300 text-xs">TOTAL VENTAS</p>
-              <p className="text-2xl font-bold text-white">${totalVentas}</p>
+              <p className="text-2xl font-bold text-white">₡{totalVentas}</p>
             </div>
           </div>
 
@@ -1412,7 +1520,7 @@ export default function RockolaSaaS() {
                   
                   {/* Vender créditos */}
                   <div className="border-t border-gray-600 pt-3">
-                    <p className="text-gray-400 text-xs mb-2">Vender créditos (precio: ${barItem.precio_compra}/cr):</p>
+                    <p className="text-gray-400 text-xs mb-2">Vender créditos (precio: ₡{barItem.precio_compra}/cr):</p>
                     <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={async () => {
@@ -1421,7 +1529,7 @@ export default function RockolaSaaS() {
                         }}
                         className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
                       >
-                        +10 (${10 * barItem.precio_compra})
+                        +10 (₡{10 * barItem.precio_compra})
                       </button>
                       <button
                         onClick={async () => {
@@ -1430,7 +1538,7 @@ export default function RockolaSaaS() {
                         }}
                         className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
                       >
-                        +50 (${50 * barItem.precio_compra})
+                        +50 (₡{50 * barItem.precio_compra})
                       </button>
                       <button
                         onClick={async () => {
@@ -1439,7 +1547,7 @@ export default function RockolaSaaS() {
                         }}
                         className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
                       >
-                        +100 (${100 * barItem.precio_compra})
+                        +100 (₡{100 * barItem.precio_compra})
                       </button>
                       <button
                         onClick={async () => {
@@ -1448,7 +1556,7 @@ export default function RockolaSaaS() {
                         }}
                         className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold"
                       >
-                        +200 (${200 * barItem.precio_compra})
+                        +200 (₡{200 * barItem.precio_compra})
                       </button>
                     </div>
                   </div>

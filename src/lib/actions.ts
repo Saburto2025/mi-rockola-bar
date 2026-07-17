@@ -129,3 +129,19 @@ export async function eliminarCliente(clienteId: string) {
 export async function crearTransaccion(trans: any) { 
   return db.crearTransaccion(trans) 
 }
+
+export async function crearSolicitudRecarga(barId: string, clienteNombre: string, monto: number) {
+  return db.crearSolicitudRecarga(barId, clienteNombre, monto)
+}
+
+export async function obtenerSolicitudesPendientes(barId: string) {
+  return db.obtenerSolicitudesPendientes(barId)
+}
+
+export async function aprobarSolicitudRecarga(solicitudId: string) {
+  return db.aprobarSolicitudRecarga(solicitudId)
+}
+
+export async function rechazarSolicitudRecarga(solicitudId: string) {
+  return db.rechazarSolicitudRecarga(solicitudId)
+}

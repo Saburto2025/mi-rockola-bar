@@ -31,6 +31,10 @@ import {
   descontarCreditoCliente,
   eliminarCliente,
   crearTransaccion,
+  crearSolicitudRecarga,
+  obtenerSolicitudesPendientes,
+  aprobarSolicitudRecarga,
+  rechazarSolicitudRecarga,
   type Bar,
   type InstanciaRockola,
   type CancionCola,
@@ -69,7 +73,11 @@ export {
   actualizarCreditosCliente,
   recargarCreditosCliente,
   descontarCreditoCliente,
-  eliminarCliente
+  eliminarCliente,
+  crearSolicitudRecarga,
+  obtenerSolicitudesPendientes,
+  aprobarSolicitudRecarga,
+  rechazarSolicitudRecarga
 }
 
 export type {
@@ -111,6 +119,7 @@ export function suscribirseACambios(barId: string, callbacks: {
   onColaCambio?: (cola: CancionCola[]) => void;
   onTransaccionCambio?: () => void;
   onControlCambio?: (instancia: InstanciaRockola) => void;
+  onSolicitudesCambio?: (solicitudes: any[]) => void;
 }) {
   let active = true;
   let timerId: any = null;
@@ -119,6 +128,7 @@ export function suscribirseACambios(barId: string, callbacks: {
   let lastBarJson = '';
   let lastColaJson = '';
   let lastControlJson = '';
+  let lastSolicitudesJson = '';
 
   const poll = async () => {
     if (!active) return;
@@ -137,6 +147,15 @@ export function suscribirseACambios(barId: string, callbacks: {
         if (active && colaJson !== lastColaJson) {
           lastColaJson = colaJson;
           callbacks.onColaCambio(cola);
+        }
+      }
+      if (callbacks.onSolicitudesCambio) {
+        const { obtenerSolicitudesPendientes } = await import('./actions');
+        const pends = await obtenerSolicitudesPendientes(barId);
+        const pendsJson = JSON.stringify(pends);
+        if (active && pendsJson !== lastSolicitudesJson) {
+          lastSolicitudesJson = pendsJson;
+          callbacks.onSolicitudesCambio(pends);
         }
       }
       if (callbacks.onControlCambio) {

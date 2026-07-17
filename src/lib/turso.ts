@@ -155,6 +155,19 @@ export async function initDatabase() {
       )
     `);
 
+    // 6. Tabla solicitudes_recarga
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS solicitudes_recarga (
+        id TEXT PRIMARY KEY,
+        bar_id TEXT NOT NULL,
+        cliente_nombre TEXT NOT NULL,
+        monto INTEGER NOT NULL,
+        estado TEXT CHECK(estado IN ('pendiente', 'aprobada', 'rechazada')) DEFAULT 'pendiente',
+        creado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (bar_id) REFERENCES bares(id) ON DELETE CASCADE
+      )
+    `);
+
     console.log("✅ Turso Database tables verified/created successfully.");
   } catch (error) {
     console.error("❌ Failed to initialize database:", error);
@@ -449,7 +462,15 @@ export async function acreditarCreditosPantalla(barId: string, cantidad: number)
 }
 
 export async function venderCreditosCliente(barId: string, clienteNombre: string, cantidad: number) {
-  return acreditarCreditosPantalla(barId, cantidad);
+  const result = await acreditarCreditosPantalla(barId, cantidad);
+  
+  // Buscar o crear cliente y sumarle el saldo (cantidad * precio_venta)
+  const bar = await obtenerBar(barId);
+  const totalColones = cantidad * (bar.precio_venta || 100);
+  const cliente = await obtenerOcrearCliente(barId, clienteNombre);
+  await recargarCreditosCliente(cliente.id, totalColones);
+
+  return result;
 }
 
 export async function obtenerTransacciones(barId: string, filtros?: {
@@ -720,5 +741,125 @@ export async function crearTransaccion(trans: any) {
       trans.descripcion || null,
       now,
     ],
+  });
+}
+
+// ============= SOLICITUDES DE RECARGA EN COLONES =============
+
+export interface SolicitudRecarga {
+  id: string;
+  bar_id: string;
+  cliente_nombre: string;
+  monto: number;
+  estado: 'pendiente' | 'aprobada' | 'rechazada';
+  creado_en: string;
+}
+
+function mapSolicitud(row: any): SolicitudRecarga {
+  return {
+    id: row.id,
+    bar_id: row.bar_id,
+    cliente_nombre: row.cliente_nombre,
+    monto: Number(row.monto || 0),
+    estado: row.estado,
+    creado_en: row.creado_en,
+  };
+}
+
+export async function crearSolicitudRecarga(barId: string, clienteNombre: string, monto: number): Promise<SolicitudRecarga> {
+  await initDatabase();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO solicitudes_recarga (id, bar_id, cliente_nombre, monto, estado, creado_en)
+          VALUES (?, ?, ?, ?, 'pendiente', ?)`,
+    args: [id, barId, clienteNombre, monto, now],
+  });
+
+  const res = await client.execute({
+    sql: "SELECT * FROM solicitudes_recarga WHERE id = ?",
+    args: [id],
+  });
+  return mapSolicitud(res.rows[0]);
+}
+
+export async function obtenerSolicitudesPendientes(barId: string): Promise<SolicitudRecarga[]> {
+  await initDatabase();
+  const res = await client.execute({
+    sql: "SELECT * FROM solicitudes_recarga WHERE bar_id = ? AND estado = 'pendiente' ORDER BY creado_en ASC",
+    args: [barId],
+  });
+  return res.rows.map(mapSolicitud);
+}
+
+export async function aprobarSolicitudRecarga(solicitudId: string): Promise<void> {
+  await initDatabase();
+  
+  const res = await client.execute({
+    sql: "SELECT * FROM solicitudes_recarga WHERE id = ?",
+    args: [solicitudId],
+  });
+  if (res.rows.length === 0) throw new Error("Solicitud no encontrada");
+  const sol = mapSolicitud(res.rows[0]);
+
+  if (sol.estado !== 'pendiente') return;
+
+  const bar = await obtenerBar(sol.bar_id);
+  const creditos = Math.floor(sol.monto / (bar.precio_venta || 100));
+
+  if (bar.creditos_disponibles < creditos) {
+    throw new Error(`Créditos insuficientes en el bar. Se requieren ${creditos} cr, disponibles ${bar.creditos_disponibles} cr.`);
+  }
+
+  const nuevoStock = bar.creditos_disponibles - creditos;
+  const now = new Date().toISOString();
+
+  // Actualizar bar
+  await client.execute({
+    sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
+    args: [nuevoStock, sol.bar_id],
+  });
+
+  // Buscar o crear cliente y sumarle el monto solicitado
+  const cliente = await obtenerOcrearCliente(sol.bar_id, sol.cliente_nombre);
+  await recargarCreditosCliente(cliente.id, sol.monto);
+
+  // Actualizar solicitud
+  await client.execute({
+    sql: "UPDATE solicitudes_recarga SET estado = 'aprobada' WHERE id = ?",
+    args: [solicitudId],
+  });
+
+  // Registrar transacción
+  const transId = crypto.randomUUID();
+  await client.execute({
+    sql: `INSERT INTO transacciones (id, bar_id, tipo, cantidad, precio_unitario, total, cliente_nombre, descripcion, creado_en)
+          VALUES (?, ?, 'venta_cliente', ?, ?, ?, ?, ?, ?)`,
+    args: [
+      transId,
+      sol.bar_id,
+      creditos,
+      bar.precio_venta,
+      sol.monto,
+      sol.cliente_nombre,
+      `Venta aprobada de recarga por ${sol.monto} colones`,
+      now,
+    ],
+  });
+}
+
+export async function registrarConsumoCreditosCliente(barId: string, clienteNombre: string, monto: number): Promise<void> {
+  const cliente = await obtenerOcrearCliente(barId, clienteNombre);
+  if (cliente.creditos >= monto) {
+    await actualizarCreditosCliente(cliente.id, cliente.creditos - monto);
+  }
+}
+
+export async function rechazarSolicitudRecarga(solicitudId: string): Promise<void> {
+  await initDatabase();
+  await client.execute({
+    sql: "UPDATE solicitudes_recarga SET estado = 'rechazada' WHERE id = ?",
+    args: [solicitudId],
   });
 }
