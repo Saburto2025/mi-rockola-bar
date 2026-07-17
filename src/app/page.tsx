@@ -150,7 +150,13 @@ export default function RockolaSaaS() {
       setCola(colaData)
 
       const actual = colaData.find(c => c.estado === 'reproduciendo')
-      setCancionActual(actual || null)
+      setCancionActual(prev => {
+        if (!prev && !actual) return null
+        if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
+          return prev
+        }
+        return actual || null
+      })
 
       const transData = await obtenerTransacciones(id)
       setTransacciones(transData)
@@ -210,7 +216,13 @@ export default function RockolaSaaS() {
       onColaCambio: (nuevaCola) => {
         setCola(nuevaCola)
         const actual = nuevaCola.find(c => c.estado === 'reproduciendo')
-        setCancionActual(actual || null)
+        setCancionActual(prev => {
+          if (!prev && !actual) return null
+          if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
+            return prev
+          }
+          return actual || null
+        })
       },
       onTransaccionCambio: () => {
         if (barId) obtenerTransacciones(barId).then(setTransacciones)
@@ -306,7 +318,7 @@ export default function RockolaSaaS() {
             duracionMinutos: minutos,
             duracionFormateada: formatDuration(minutos)
           }
-        })
+        }).filter((v: any) => v.duracionMinutos <= 8)
 
         setVideosBusqueda(videosConDuracion)
       } else {
@@ -323,13 +335,20 @@ export default function RockolaSaaS() {
     const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
     const hours = parseInt((match?.[1] || '0H').replace('H', '')) || 0
     const minutes = parseInt((match?.[2] || '0M').replace('M', '')) || 0
-    return hours * 60 + minutes
+    const seconds = parseInt((match?.[3] || '0S').replace('S', '')) || 0
+    return hours * 60 + minutes + seconds / 60
   }
 
   const formatDuration = (minutos: number): string => {
-    const h = Math.floor(minutos / 60)
-    const m = minutos % 60
-    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}` : `${m}:00`
+    const totalSeconds = Math.round(minutos * 60)
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    }
+    return `${m}:${s.toString().padStart(2, '0')}`
   }
 
   // ============= FUNCIONES DE COLA =============
@@ -343,6 +362,9 @@ export default function RockolaSaaS() {
     }
 
     try {
+      const nuevaPosicion = cola.length > 0 ? Math.max(...cola.map(c => c.posicion || 0)) + 1 : 0
+
+      // Agregar canción a la base de datos
       await agregarCancion({
         bar_id: bar.id,
         video_id: video.id.videoId,
@@ -353,8 +375,24 @@ export default function RockolaSaaS() {
         costo_creditos: bar.precio_compra,
         precio_venta: bar.precio_venta,
         solicitado_por: nombreCliente || 'Cliente',
-        posicion: cola.length
+        posicion: nuevaPosicion
       })
+
+      // Actualizar localmente de inmediato para que clics sucesivos incrementen la posición secuencialmente
+      const cancionTmp: CancionCola = {
+        id: Math.random().toString(),
+        bar_id: bar.id,
+        video_id: video.id.videoId,
+        titulo: video.snippet.title,
+        thumbnail: video.snippet.thumbnails.default.url,
+        canal: video.snippet.channelTitle,
+        estado: 'pendiente',
+        costo_creditos: bar.precio_compra,
+        solicitado_por: nombreCliente || 'Cliente',
+        posicion: nuevaPosicion,
+        creado_en: new Date().toISOString()
+      }
+      setCola(prev => [...prev, cancionTmp])
 
       // Descontar del saldo del cliente
       const nuevosCreditos = creditosCliente - precioCancion
@@ -386,20 +424,11 @@ export default function RockolaSaaS() {
 
   const aprobarCancion = async (cancionId: string) => {
     try {
-      // Si no hay ninguna canción en reproducción, la pasamos directamente a 'reproduciendo'
-      const estaReproduciendoAlgo = cola.some(c => c.estado === 'reproduciendo')
-      const nuevoEstado = estaReproduciendoAlgo ? 'aprobada' : 'reproduciendo'
-
-      await actualizarEstadoCancion(cancionId, nuevoEstado)
+      // El Admin solo cambia el estado a 'aprobada'. La pantalla de TV gestiona la reproducción secuencial.
+      await actualizarEstadoCancion(cancionId, 'aprobada')
       
-      // Actualizar localmente de inmediato para mejorar la respuesta visual
-      setCola(prev => prev.map(c => c.id === cancionId ? { ...c, estado: nuevoEstado } : c))
-      if (!estaReproduciendoAlgo) {
-        const cancion = cola.find(c => c.id === cancionId)
-        if (cancion) {
-          setCancionActual({ ...cancion, estado: 'reproduciendo' })
-        }
-      }
+      // Actualizar localmente para feedback inmediato
+      setCola(prev => prev.map(c => c.id === cancionId ? { ...c, estado: 'aprobada' } : c))
     } catch (error) {
       console.error('Error aprobando:', error)
       alert('❌ Error al aprobar')
@@ -458,6 +487,19 @@ export default function RockolaSaaS() {
         setTimeout(() => reproducirSiguiente(), 500)
       } catch (error) {
         console.error('Error terminando video:', error)
+      }
+    }
+  }, [cancionActual, reproducirSiguiente])
+
+  const onVideoError = useCallback(async (event: any) => {
+    console.error('YouTube Player Error:', event.data)
+    if (cancionActual) {
+      try {
+        await eliminarCancion(cancionActual.id)
+        setCancionActual(null)
+        setTimeout(() => reproducirSiguiente(), 500)
+      } catch (error) {
+        console.error('Error handling video error:', error)
       }
     }
   }, [cancionActual, reproducirSiguiente])
@@ -893,6 +935,7 @@ export default function RockolaSaaS() {
               }}
               onReady={onPlayerReady}
               onEnd={onVideoEnd}
+              onError={onVideoError}
               className="w-full h-full"
               iframeClassName="w-full h-full absolute inset-0"
             />
