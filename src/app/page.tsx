@@ -15,9 +15,9 @@ import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCanc
 export const dynamic = 'force-dynamic'
 
 // ============= CONFIGURACIÓN =============
-const CLAVE_ADMIN = "1234"
-const CLAVE_SUPER_ADMIN = "rockola2024"
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""
+const CLAVE_ADMIN = '1234'
+const CLAVE_SUPER_ADMIN = 'rockola2024'
+const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "AIzaSyC2JJqbZUDOkjBOzyU3xE6yJFoCJh1a6JY"
 
 interface VideoBusqueda {
   id: { videoId: string }
@@ -233,12 +233,26 @@ export default function RockolaSaaS() {
     if (!busqueda.trim()) return
     setBuscando(true)
 
+    if (!YOUTUBE_API_KEY) {
+      alert("❌ Error: La clave de API de YouTube (NEXT_PUBLIC_YOUTUBE_API_KEY) no está configurada.");
+      setBuscando(false)
+      return
+    }
+
     try {
       const query = encodeURIComponent(busqueda)
       const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
 
       const res = await fetch(url)
       const data = await res.json()
+
+      if (data.error) {
+        console.error('Error de API de YouTube:', data.error)
+        alert(`❌ Error de YouTube: ${data.error.message || 'Error desconocido'} (Código: ${data.error.code})`)
+        setVideosBusqueda([])
+        setBuscando(false)
+        return
+      }
 
       if (data.items && data.items.length > 0) {
         const videoIds = data.items.map((v: VideoBusqueda) => v.id.videoId).join(',')
@@ -645,7 +659,7 @@ export default function RockolaSaaS() {
           onKeyDown={(e) => e.key === 'Enter' && confirmarVentaCliente()}
           placeholder="Escribe el nombre completo..."
           autoFocus
-          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none"
+          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none text-gray-900 bg-white"
         />
         <div className="flex gap-2">
           <button 
@@ -657,7 +671,7 @@ export default function RockolaSaaS() {
           <button 
             onClick={confirmarVentaCliente}
             disabled={!nombreClienteInput.trim()}
-            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl transition-colors"
+            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 rounded-xl transition-colors"
           >
             Confirmar
           </button>
@@ -678,7 +692,7 @@ export default function RockolaSaaS() {
           onChange={(e) => setCreditosRecarga(e.target.value)}
           placeholder="Cantidad de créditos..."
           autoFocus
-          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none"
+          className="w-full p-4 border-2 border-gray-200 rounded-xl text-lg mb-4 focus:border-green-500 focus:outline-none text-gray-900 bg-white"
         />
         <div className="flex gap-2">
           <button 
@@ -698,7 +712,7 @@ export default function RockolaSaaS() {
               }
             }}
             disabled={!creditosRecarga || parseInt(creditosRecarga) <= 0}
-            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl transition-colors"
+            className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 rounded-xl transition-colors"
           >
             Confirmar
           </button>
@@ -718,7 +732,7 @@ export default function RockolaSaaS() {
           <div className="bg-gray-100 p-3 rounded-lg">
             <p className="text-sm text-gray-500 mb-1">📺 TV (Pantalla del bar)</p>
             <div className="flex items-center gap-2">
-              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlTV(nuevoBarCreado?.bar.id)}</code>
+              <code className="text-xs bg-white text-gray-900 px-2 py-1 rounded flex-1 break-all">{getUrlTV(nuevoBarCreado?.bar.id)}</code>
               <button onClick={() => copiarUrl(getUrlTV(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
                 <Copy className="w-4 h-4" />
               </button>
@@ -728,7 +742,7 @@ export default function RockolaSaaS() {
           <div className="bg-gray-100 p-3 rounded-lg">
             <p className="text-sm text-gray-500 mb-1">👤 Cliente (Para pedir música)</p>
             <div className="flex items-center gap-2">
-              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlCliente(nuevoBarCreado?.bar.id)}</code>
+              <code className="text-xs bg-white text-gray-900 px-2 py-1 rounded flex-1 break-all">{getUrlCliente(nuevoBarCreado?.bar.id)}</code>
               <button onClick={() => copiarUrl(getUrlCliente(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
                 <Copy className="w-4 h-4" />
               </button>
@@ -738,7 +752,7 @@ export default function RockolaSaaS() {
           <div className="bg-gray-100 p-3 rounded-lg">
             <p className="text-sm text-gray-500 mb-1">🔑 Admin (Panel del bar)</p>
             <div className="flex items-center gap-2">
-              <code className="text-xs bg-white px-2 py-1 rounded flex-1 break-all">{getUrlAdmin(nuevoBarCreado?.bar.id)}</code>
+              <code className="text-xs bg-white text-gray-900 px-2 py-1 rounded flex-1 break-all">{getUrlAdmin(nuevoBarCreado?.bar.id)}</code>
               <button onClick={() => copiarUrl(getUrlAdmin(nuevoBarCreado?.bar.id))} className="text-blue-500 hover:text-blue-700">
                 <Copy className="w-4 h-4" />
               </button>
@@ -866,13 +880,13 @@ export default function RockolaSaaS() {
               onChange={(e) => setNombreCliente(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && nombreCliente.trim() && setClienteRegistrado(true)}
               placeholder="Tu nombre completo..."
-              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none"
+              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none text-gray-900 bg-white"
             />
             
             <button
               onClick={() => nombreCliente.trim() && setClienteRegistrado(true)}
               disabled={!nombreCliente.trim()}
-              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors"
+              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors"
             >
               ENTRAR
             </button>
@@ -1048,7 +1062,7 @@ export default function RockolaSaaS() {
                 alert('❌ Clave incorrecta')
               )}
               placeholder="Ingresa tu clave"
-              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-yellow-500 focus:outline-none"
+              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-yellow-500 focus:outline-none text-gray-900 bg-white"
             />
             <button
               onClick={() => {
@@ -1236,7 +1250,7 @@ export default function RockolaSaaS() {
                 claveInput === CLAVE_SUPER_ADMIN ? setIsAuthed(true) : alert('❌ Clave incorrecta')
               )}
               placeholder="Ingresa tu clave"
-              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none"
+              className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-purple-500 focus:outline-none text-gray-900 bg-white"
             />
             <button
               onClick={() => {
