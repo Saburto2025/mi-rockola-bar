@@ -35,7 +35,13 @@ export async function eliminarCancion(cancionId: string) {
 }
 
 export async function comprarCreditosProveedor(barId: string, cantidad: number, precioUnitario: number) { 
-  return db.comprarCreditosProveedor(barId, cantidad, precioUnitario) 
+  try {
+    const res = await db.comprarCreditosProveedor(barId, cantidad, precioUnitario) 
+    return { success: true, data: res }
+  } catch (err: any) {
+    console.error("Error in comprarCreditosProveedor action:", err)
+    return { success: false, error: err.message || "Error desconocido" }
+  }
 }
 
 export async function acreditarCreditosPantalla(barId: string, cantidad: number) { 
@@ -43,7 +49,13 @@ export async function acreditarCreditosPantalla(barId: string, cantidad: number)
 }
 
 export async function venderCreditosCliente(barId: string, clienteNombre: string, cantidad: number) { 
-  return db.venderCreditosCliente(barId, clienteNombre, cantidad) 
+  try {
+    const res = await db.venderCreditosCliente(barId, clienteNombre, cantidad) 
+    return { success: true, data: res }
+  } catch (err: any) {
+    console.error("Error in venderCreditosCliente action:", err)
+    return { success: false, error: err.message || "Error desconocido" }
+  }
 }
 
 export async function obtenerTransacciones(barId: string, filtros?: any) { 
@@ -131,7 +143,13 @@ export async function crearTransaccion(trans: any) {
 }
 
 export async function crearSolicitudRecarga(barId: string, clienteNombre: string, monto: number) {
-  return db.crearSolicitudRecarga(barId, clienteNombre, monto)
+  try {
+    const res = await db.crearSolicitudRecarga(barId, clienteNombre, monto)
+    return { success: true, data: res }
+  } catch (err: any) {
+    console.error("Error in crearSolicitudRecarga action:", err)
+    return { success: false, error: err.message || "Error desconocido" }
+  }
 }
 
 export async function obtenerSolicitudesPendientes(barId: string) {
@@ -139,9 +157,21 @@ export async function obtenerSolicitudesPendientes(barId: string) {
 }
 
 export async function aprobarSolicitudRecarga(solicitudId: string) {
-  return db.aprobarSolicitudRecarga(solicitudId)
+  try {
+    await db.aprobarSolicitudRecarga(solicitudId)
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error in aprobarSolicitudRecarga action:", err)
+    return { success: false, error: err.message || "Error desconocido" }
+  }
 }
 
 export async function rechazarSolicitudRecarga(solicitudId: string) {
-  return db.rechazarSolicitudRecarga(solicitudId)
+  try {
+    await db.rechazarSolicitudRecarga(solicitudId)
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error in rechazarSolicitudRecarga action:", err)
+    return { success: false, error: err.message || "Error desconocido" }
+  }
 }

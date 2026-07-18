@@ -594,13 +594,17 @@ export default function RockolaSaaS() {
   const comprarCreditosSoftware = async (cantidad: number, precioUnitario: number) => {
     if (!barSeleccionado) return
     try {
-      await comprarCreditosProveedor(barSeleccionado.id, cantidad, precioUnitario)
+      const res = await comprarCreditosProveedor(barSeleccionado.id, cantidad, precioUnitario) as any
+      if (res && res.success === false) {
+        alert(`❌ Error al vender créditos: ${res.error}`)
+        return
+      }
       // Usar isRefresh=true para evitar parpadeo
       await cargarDatos(undefined, true)
       alert(`✅ Vendidos ${cantidad} créditos a ₡${precioUnitario} c/u = ₡${cantidad * precioUnitario}`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error vendiendo créditos:', error)
-      alert('❌ Error al vender créditos')
+      alert(`❌ Error al vender créditos: ${error.message || 'Error desconocido'}`)
     }
   }
 
@@ -618,14 +622,18 @@ export default function RockolaSaaS() {
     if (!bar) return
     
     try {
-      await venderCreditosCliente(bar.id, nombreClienteInput.trim(), creditosAVender)
+      const res = await venderCreditosCliente(bar.id, nombreClienteInput.trim(), creditosAVender) as any
+      if (res && res.success === false) {
+        alert(`❌ Error al vender créditos: ${res.error}`)
+        return
+      }
       // Usar isRefresh=true para evitar parpadeo
       await cargarDatos(undefined, true)
       setModalClienteAbierto(false)
       alert(`✅ Vendidos ${creditosAVender} créditos a ${nombreClienteInput.trim()} = ₡${creditosAVender * bar.precio_venta}`)
     } catch (error: any) {
       console.error('Error vendiendo:', error)
-      alert(error.message || '❌ Error al vender créditos')
+      alert(`❌ Error al vender créditos: ${error.message || 'Error desconocido'}`)
     }
   }
 
@@ -836,7 +844,11 @@ export default function RockolaSaaS() {
               const monto = parseInt(montoRecargaColones)
               if (monto > 0 && bar && nombreCliente) {
                 try {
-                  await crearSolicitudRecarga(bar.id, nombreCliente, monto)
+                  const res = await crearSolicitudRecarga(bar.id, nombreCliente, monto) as any
+                  if (res && res.success === false) {
+                    alert(`❌ Error al solicitar recarga: ${res.error}`)
+                    return
+                  }
                   setModalRecarga(false)
                   setMontoRecargaColones('')
                   alert(`✅ Solicitud de recarga enviada al administrador por ₡${monto}.`)
@@ -1300,7 +1312,11 @@ export default function RockolaSaaS() {
                         <button
                           onClick={async () => {
                             try {
-                              await aprobarSolicitudRecarga(sol.id)
+                              const res = await aprobarSolicitudRecarga(sol.id) as any
+                              if (res && res.success === false) {
+                                alert(`❌ Error al aprobar: ${res.error}`)
+                                return
+                              }
                               await cargarDatos(undefined, true)
                               alert(`✅ Solicitud aprobada para ${sol.cliente_nombre}`)
                             } catch (e: any) {
@@ -1314,7 +1330,11 @@ export default function RockolaSaaS() {
                         <button
                           onClick={async () => {
                             try {
-                              await rechazarSolicitudRecarga(sol.id)
+                              const res = await rechazarSolicitudRecarga(sol.id) as any
+                              if (res && res.success === false) {
+                                alert(`❌ Error al rechazar: ${res.error}`)
+                                return
+                              }
                               await cargarDatos(undefined, true)
                               alert(`❌ Solicitud rechazada`)
                             } catch (e: any) {
