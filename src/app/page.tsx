@@ -155,7 +155,13 @@ export default function RockolaSaaS() {
         if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
           return prev
         }
-        return actual || null
+        if (actual) {
+          return actual
+        }
+        if (modo === 'tv') {
+          return prev
+        }
+        return null
       })
 
       const transData = await obtenerTransacciones(id)
@@ -221,7 +227,13 @@ export default function RockolaSaaS() {
           if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
             return prev
           }
-          return actual || null
+          if (actual) {
+            return actual
+          }
+          if (modo === 'tv') {
+            return prev
+          }
+          return null
         })
       },
       onTransaccionCambio: () => {
@@ -456,20 +468,17 @@ export default function RockolaSaaS() {
   }
 
   // ============= REPRODUCCIÓN =============
-  const reproducirSiguiente = useCallback(async () => {
+  const reproducirSiguiente = useCallback(async (idToClean?: string) => {
     try {
-      const dbCola = await obtenerCola(barId)
-      
-      // Limpiar cualquier canción que haya quedado en estado 'reproduciendo' para evitar atascos
-      const cancionesStale = dbCola.filter(c => c.estado === 'reproduciendo')
-      for (const c of cancionesStale) {
+      if (idToClean) {
         try {
-          await eliminarCancion(c.id)
+          await eliminarCancion(idToClean)
         } catch (err) {
-          console.error('Error limpiando canción reproducida de la BD:', err)
+          console.error('Error limpiando canción finalizada de la BD:', err)
         }
       }
 
+      const dbCola = await obtenerCola(barId)
       const colaAprobada = dbCola.filter(c => c.estado === 'aprobada')
 
       if (colaAprobada.length > 0) {
@@ -498,12 +507,7 @@ export default function RockolaSaaS() {
     if (cancionActual) {
       const idToClean = cancionActual.id
       setCancionActual(null) // Actualizar interfaz de inmediato
-      try {
-        await eliminarCancion(idToClean)
-      } catch (error) {
-        console.error('Error terminando video en base de datos:', error)
-      }
-      setTimeout(() => reproducirSiguiente(), 500)
+      setTimeout(() => reproducirSiguiente(idToClean), 500)
     }
   }, [cancionActual, reproducirSiguiente])
 
@@ -512,12 +516,7 @@ export default function RockolaSaaS() {
     if (cancionActual) {
       const idToClean = cancionActual.id
       setCancionActual(null) // Actualizar interfaz de inmediato
-      try {
-        await eliminarCancion(idToClean)
-      } catch (error) {
-        console.error('Error handling video error en base de datos:', error)
-      }
-      setTimeout(() => reproducirSiguiente(), 500)
+      setTimeout(() => reproducirSiguiente(idToClean), 500)
     }
   }, [cancionActual, reproducirSiguiente])
 
