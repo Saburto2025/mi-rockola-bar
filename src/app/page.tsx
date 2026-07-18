@@ -361,19 +361,24 @@ export default function RockolaSaaS() {
       return
     }
 
+    if (bar.creditos_pantalla < 1) {
+      alert(`❌ La rockola no tiene créditos en pantalla. Pide al administrador que recargue la pantalla.`)
+      return
+    }
+
     try {
       const nuevaPosicion = cola.length > 0 ? Math.max(...cola.map(c => c.posicion || 0)) + 1 : 0
 
-      // Agregar canción a la base de datos
-      await agregarCancion({
-        bar_id: bar.id,
+      // Agregar canción a la base de datos y consumir crédito de pantalla
+      const { obtenerOcrearCliente, actualizarCreditosCliente, agregarCancionYConsumir } = await import('@/lib/supabase')
+      
+      await agregarCancionYConsumir(bar.id, {
         video_id: video.id.videoId,
         titulo: video.snippet.title,
         thumbnail: video.snippet.thumbnails.default.url,
         canal: video.snippet.channelTitle,
-        estado: 'pendiente',
+        estado: 'aprobada', // Se agrega aprobada de inmediato al consumirse un crédito
         costo_creditos: bar.precio_compra,
-        precio_venta: bar.precio_venta,
         solicitado_por: nombreCliente || 'Cliente',
         posicion: nuevaPosicion
       })
@@ -386,7 +391,7 @@ export default function RockolaSaaS() {
         titulo: video.snippet.title,
         thumbnail: video.snippet.thumbnails.default.url,
         canal: video.snippet.channelTitle,
-        estado: 'pendiente',
+        estado: 'aprobada',
         costo_creditos: bar.precio_compra,
         solicitado_por: nombreCliente || 'Cliente',
         posicion: nuevaPosicion,
@@ -399,7 +404,6 @@ export default function RockolaSaaS() {
       setCreditosCliente(nuevosCreditos)
 
       // Descontar saldo del cliente en la base de datos
-      const { obtenerOcrearCliente, actualizarCreditosCliente } = await import('@/lib/supabase')
       const clientDb = await obtenerOcrearCliente(bar.id, nombreCliente)
       await actualizarCreditosCliente(clientDb.id, clientDb.creditos - precioCancion)
 
@@ -416,9 +420,9 @@ export default function RockolaSaaS() {
 
       // NO limpiar búsqueda para permitir agregar más canciones
       alert(`✅ "${video.snippet.title.substring(0, 30)}..." agregado a la cola. Saldo restante: ₡${nuevosCreditos}`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error agregando video:', error)
-      alert('❌ Error al agregar video')
+      alert(error.message || '❌ Error al agregar video')
     }
   }
 
@@ -455,6 +459,17 @@ export default function RockolaSaaS() {
   const reproducirSiguiente = useCallback(async () => {
     try {
       const dbCola = await obtenerCola(barId)
+      
+      // Limpiar cualquier canción que haya quedado en estado 'reproduciendo' para evitar atascos
+      const cancionesStale = dbCola.filter(c => c.estado === 'reproduciendo')
+      for (const c of cancionesStale) {
+        try {
+          await eliminarCancion(c.id)
+        } catch (err) {
+          console.error('Error limpiando canción reproducida de la BD:', err)
+        }
+      }
+
       const colaAprobada = dbCola.filter(c => c.estado === 'aprobada')
 
       if (colaAprobada.length > 0) {
@@ -471,8 +486,8 @@ export default function RockolaSaaS() {
       if (colaAprobada.length > 0) {
         const siguiente = colaAprobada[0]
         actualizarEstadoCancion(siguiente.id, 'reproduciendo')
-          .then(() => setCancionActual(siguiente))
-          .catch(console.error)
+          .catch(err => console.error('Fallback error updating state:', err))
+          .finally(() => setCancionActual(siguiente))
       } else {
         setCancionActual(null)
       }
@@ -481,26 +496,28 @@ export default function RockolaSaaS() {
 
   const onVideoEnd = useCallback(async () => {
     if (cancionActual) {
+      const idToClean = cancionActual.id
+      setCancionActual(null) // Actualizar interfaz de inmediato
       try {
-        await eliminarCancion(cancionActual.id)
-        setCancionActual(null)
-        setTimeout(() => reproducirSiguiente(), 500)
+        await eliminarCancion(idToClean)
       } catch (error) {
-        console.error('Error terminando video:', error)
+        console.error('Error terminando video en base de datos:', error)
       }
+      setTimeout(() => reproducirSiguiente(), 500)
     }
   }, [cancionActual, reproducirSiguiente])
 
   const onVideoError = useCallback(async (event: any) => {
     console.error('YouTube Player Error:', event.data)
     if (cancionActual) {
+      const idToClean = cancionActual.id
+      setCancionActual(null) // Actualizar interfaz de inmediato
       try {
-        await eliminarCancion(cancionActual.id)
-        setCancionActual(null)
-        setTimeout(() => reproducirSiguiente(), 500)
+        await eliminarCancion(idToClean)
       } catch (error) {
-        console.error('Error handling video error:', error)
+        console.error('Error handling video error en base de datos:', error)
       }
+      setTimeout(() => reproducirSiguiente(), 500)
     }
   }, [cancionActual, reproducirSiguiente])
 
@@ -509,7 +526,11 @@ export default function RockolaSaaS() {
     setPlayer(event.target)
     event.target.setVolume(volumen)
     if (modo === 'tv' && tvReady) {
-      event.target.playVideo()
+      try {
+        event.target.playVideo()
+      } catch (err) {
+        console.error('Error playing video on ready:', err)
+      }
     }
   }
 
@@ -681,6 +702,17 @@ export default function RockolaSaaS() {
       }
     }
   }, [volumen, modo])
+
+  // ============= EFECTO DE AUTOPLAY AL ACTIVAR TV O CAMBIAR CANCIÓN =============
+  useEffect(() => {
+    if (modo === 'tv' && tvReady && playerRef.current && cancionActual && !pausado) {
+      try {
+        playerRef.current.playVideo()
+      } catch (err) {
+        console.error('Error controlando autoplay en TV:', err)
+      }
+    }
+  }, [tvReady, cancionActual, pausado, modo, player])
 
   // ============= URLS EXCLUSIVAS =============
   const getUrlCliente = (barIdParam?: string) => {
@@ -900,6 +932,13 @@ export default function RockolaSaaS() {
               <button
                 onClick={() => {
                   setTvReady(true)
+                  if (playerRef.current) {
+                    try {
+                      playerRef.current.playVideo()
+                    } catch (err) {
+                      console.error('Error al reproducir video existente al activar TV:', err)
+                    }
+                  }
                   const colaAprobada = cola.filter(c => c.estado === 'aprobada')
                   if (!cancionActual && colaAprobada.length > 0) {
                     reproducirSiguiente()

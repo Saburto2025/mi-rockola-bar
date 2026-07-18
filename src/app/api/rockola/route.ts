@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     
     const bar = barRes.rows[0] ? {
       ...barRes.rows[0],
-      activo: barRes.rows[0].activo === 1 || barRes.rows[0].activo === true || barRes.rows[0].activo === 'true',
+      activo: barRes.rows[0].activo === 1 || (barRes.rows[0].activo as any) === true || barRes.rows[0].activo === 'true',
       saldo_saas: Number(barRes.rows[0].creditos_disponibles || 0),
       creditos_disponibles: Number(barRes.rows[0].creditos_disponibles || 0),
       creditos_pantalla: Number(barRes.rows[0].creditos_pantalla || 0),
@@ -42,8 +42,8 @@ export async function GET(request: NextRequest) {
       ...rockolaRes.rows[0],
       creditos_pantalla: Number(rockolaRes.rows[0].creditos_pantalla || 0),
       volumen: Number(rockolaRes.rows[0].volumen || 50),
-      pausado: rockolaRes.rows[0].pausado === 1 || rockolaRes.rows[0].pausado === true || rockolaRes.rows[0].pausado === 'true',
-      skip_requested: rockolaRes.rows[0].skip_requested === 1 || rockolaRes.rows[0].skip_requested === true || rockolaRes.rows[0].skip_requested === 'true'
+      pausado: rockolaRes.rows[0].pausado === 1 || (rockolaRes.rows[0].pausado as any) === true || rockolaRes.rows[0].pausado === 'true',
+      skip_requested: rockolaRes.rows[0].skip_requested === 1 || (rockolaRes.rows[0].skip_requested as any) === true || rockolaRes.rows[0].skip_requested === 'true'
     } : null
 
     return NextResponse.json({

@@ -135,24 +135,35 @@ export function suscribirseACambios(barId: string, callbacks: {
 
   const poll = async () => {
     if (!active) return;
-    try {
-      if (callbacks.onBarCambio) {
+
+    if (callbacks.onBarCambio) {
+      try {
         const bar = await obtenerBar(barId);
         const barJson = JSON.stringify(bar);
         if (active && barJson !== lastBarJson) {
           lastBarJson = barJson;
           callbacks.onBarCambio(bar);
         }
+      } catch (e) {
+        console.error("Error in onBarCambio polling:", e);
       }
-      if (callbacks.onColaCambio) {
+    }
+
+    if (callbacks.onColaCambio) {
+      try {
         const cola = await obtenerCola(barId);
         const colaJson = JSON.stringify(cola);
         if (active && colaJson !== lastColaJson) {
           lastColaJson = colaJson;
           callbacks.onColaCambio(cola);
         }
+      } catch (e) {
+        console.error("Error in onColaCambio polling:", e);
       }
-      if (callbacks.onSolicitudesCambio) {
+    }
+
+    if (callbacks.onSolicitudesCambio) {
+      try {
         const { obtenerSolicitudesPendientes } = await import('./actions');
         const pends = await obtenerSolicitudesPendientes(barId);
         const pendsJson = JSON.stringify(pends);
@@ -160,8 +171,13 @@ export function suscribirseACambios(barId: string, callbacks: {
           lastSolicitudesJson = pendsJson;
           callbacks.onSolicitudesCambio(pends);
         }
+      } catch (e) {
+        console.error("Error in onSolicitudesCambio polling:", e);
       }
-      if (callbacks.onControlCambio) {
+    }
+
+    if (callbacks.onControlCambio) {
+      try {
         const ctrl = await obtenerInstanciaControl(barId);
         if (active) {
           if (ctrl) {
@@ -177,9 +193,9 @@ export function suscribirseACambios(barId: string, callbacks: {
             }
           }
         }
+      } catch (e) {
+        console.error("Error in onControlCambio polling:", e);
       }
-    } catch (e) {
-      console.error("Error in suscribirseACambios polling loop:", e);
     }
 
     if (active) {
