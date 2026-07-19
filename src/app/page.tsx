@@ -152,13 +152,20 @@ export default function RockolaSaaS() {
       const actual = colaData.find(c => c.estado === 'reproduciendo')
       setCancionActual(prev => {
         if (!prev && !actual) return null
+        const sigueEnCola = prev ? colaData.some(c => c.id === prev.id) : false
         if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
           return prev
         }
         if (actual) {
+          if (prev && !sigueEnCola) {
+            return actual
+          }
+          if (modo === 'tv') {
+            return prev
+          }
           return actual
         }
-        if (modo === 'tv') {
+        if (modo === 'tv' && sigueEnCola) {
           return prev
         }
         return null
@@ -224,13 +231,20 @@ export default function RockolaSaaS() {
         const actual = nuevaCola.find(c => c.estado === 'reproduciendo')
         setCancionActual(prev => {
           if (!prev && !actual) return null
+          const sigueEnCola = prev ? nuevaCola.some(c => c.id === prev.id) : false
           if (prev && actual && prev.id === actual.id && prev.video_id === actual.video_id) {
             return prev
           }
           if (actual) {
+            if (prev && !sigueEnCola) {
+              return actual
+            }
+            if (modo === 'tv') {
+              return prev
+            }
             return actual
           }
-          if (modo === 'tv') {
+          if (modo === 'tv' && sigueEnCola) {
             return prev
           }
           return null
@@ -599,6 +613,20 @@ export default function RockolaSaaS() {
         event.target.playVideo()
       } catch (err) {
         console.error('Error playing video on ready:', err)
+      }
+    }
+  }
+
+  const onPlayerStateChange = (event: any) => {
+    // Si estamos en modo TV, el admin no ha pausado, y el video se detuvo (2: paused, -1: unstarted, 5: cued), intentar reproducir
+    if (modo === 'tv' && tvReady && !pausado) {
+      const state = event.data
+      if (state === 2 || state === -1 || state === 5) {
+        try {
+          event.target.playVideo()
+        } catch (err) {
+          console.error('Error al intentar reanudar video en cambio de estado:', err)
+        }
       }
     }
   }
@@ -1056,6 +1084,7 @@ export default function RockolaSaaS() {
               onReady={onPlayerReady}
               onEnd={onVideoEnd}
               onError={onVideoError}
+              onStateChange={onPlayerStateChange}
               className="w-full h-full"
               iframeClassName="w-full h-full absolute inset-0"
             />
@@ -1234,13 +1263,20 @@ export default function RockolaSaaS() {
             )}
 
             <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-              {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold text-sm">{idx + 1}</span>
-                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'reproduciendo').map((cancion, idx) => (
+                <div key={cancion.id} className={`p-2 rounded-lg flex items-center gap-2 ${cancion.estado === 'reproduciendo' ? 'bg-green-950/40 border border-green-500/30' : 'bg-gray-700'}`}>
+                  <span className="text-gray-400 w-5 text-center font-bold text-sm">
+                    {cancion.estado === 'reproduciendo' ? '▶️' : idx + 1}
+                  </span>
+                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs truncate">{cancion.titulo}</p>
-                    <p className="text-xs text-gray-400">{cancion.solicitado_por}</p>
+                    <p className="text-xs text-gray-400 flex items-center gap-1">
+                      <span>{cancion.solicitado_por}</span>
+                      {cancion.estado === 'reproduciendo' && (
+                        <span className="text-green-400 font-semibold text-[10px] bg-green-500/10 px-1 rounded">Reproduciendo</span>
+                      )}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -1249,7 +1285,7 @@ export default function RockolaSaaS() {
                 <p className="text-yellow-400 text-xs py-1">⏳ Pendientes: {cola.filter(c => c.estado === 'pendiente').length}</p>
               )}
 
-              {cola.filter(c => c.estado !== 'reproduciendo').length === 0 && !cancionActual && (
+              {cola.length === 0 && !cancionActual && (
                 <p className="text-gray-500 text-center py-2 text-sm">No hay videos en cola</p>
               )}
             </div>
@@ -1464,17 +1500,24 @@ export default function RockolaSaaS() {
               </div>
             )}
             <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-              {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
-                <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
-                  <span className="text-gray-400 w-5 text-center font-bold">{idx + 1}</span>
-                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded" />
-                  <p className="text-sm truncate flex-1">{cancion.titulo}</p>
+              {cola.filter(c => c.estado === 'aprobada' || c.estado === 'reproduciendo').map((cancion, idx) => (
+                <div key={cancion.id} className={`p-2 rounded-lg flex items-center gap-2 ${cancion.estado === 'reproduciendo' ? 'bg-yellow-950/40 border border-yellow-500/30' : 'bg-gray-700'}`}>
+                  <span className="text-gray-400 w-5 text-center font-bold">
+                    {cancion.estado === 'reproduciendo' ? '▶️' : idx + 1}
+                  </span>
+                  <img src={cancion.thumbnail} alt="" className="w-8 h-8 rounded flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{cancion.titulo}</p>
+                    {cancion.estado === 'reproduciendo' && (
+                      <p className="text-[10px] text-yellow-400 font-semibold">Reproduciendo ahora</p>
+                    )}
+                  </div>
                   <button onClick={() => eliminarDeCola(cancion.id)} className="text-red-400 hover:text-red-300 p-1">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
-              {cola.filter(c => c.estado === 'aprobada').length === 0 && !cancionActual && (
+              {cola.length === 0 && !cancionActual && (
                 <p className="text-gray-500 text-center py-2">No hay videos en cola</p>
               )}
             </div>
