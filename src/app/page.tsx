@@ -9,7 +9,7 @@ import {
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
   Plus, Minus, LogOut, Copy, Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, crearSolicitudRecarga, obtenerSolicitudesPendientes, aprobarSolicitudRecarga, rechazarSolicitudRecarga, acreditarCreditosPantalla, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, crearSolicitudRecarga, obtenerSolicitudesPendientes, aprobarSolicitudRecarga, rechazarSolicitudRecarga, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
@@ -715,7 +715,20 @@ export default function RockolaSaaS() {
     }
 
     try {
-      await acreditarCreditosPantalla(bar.id, cantidad)
+      // Usamos fetch directo al endpoint para evitar problemas de Server Action IDs entre despliegues
+      const res = await fetch('/api/rockola', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bar_id: bar.id,
+          cantidad,
+          clave: bar.clave_admin || '1234'
+        })
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Error desconocido')
+      }
       await cargarDatos(undefined, true)
       alert(`✅ Se transfirieron ${cantidad} créditos a la pantalla correctamente`)
     } catch (e: any) {

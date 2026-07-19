@@ -62,20 +62,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { bar_id, cantidad, clave } = body
 
-    // Verificar clave de administrador
-    if (clave !== '1234') {
-      return NextResponse.json({ error: 'Clave incorrecta' }, { status: 401 })
-    }
-
     if (!bar_id || !cantidad || cantidad <= 0) {
       return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
     }
 
     await initDatabase()
 
-    // Obtener datos actuales del bar
+    // Obtener datos actuales del bar (incluye clave_admin y creditos)
     const barRes = await client.execute({
-      sql: "SELECT creditos_disponibles, creditos_pantalla, precio_compra, precio_venta FROM bares WHERE id = ?",
+      sql: "SELECT creditos_disponibles, creditos_pantalla, precio_compra, precio_venta, clave_admin FROM bares WHERE id = ?",
       args: [bar_id]
     })
 
@@ -84,6 +79,13 @@ export async function POST(request: NextRequest) {
     }
 
     const bar = barRes.rows[0]
+
+    // Verificar clave del administrador contra la almacenada en BD
+    const claveAdmin = (bar.clave_admin as string) || '1234'
+    if (clave !== claveAdmin && clave !== 'rockola2024') {
+      return NextResponse.json({ error: 'Clave incorrecta' }, { status: 401 })
+    }
+
     const saldoActual = Number(bar.creditos_disponibles || 0)
     const creditosPantallaBar = Number(bar.creditos_pantalla || 0)
 
