@@ -1163,7 +1163,7 @@ export default function RockolaSaaS() {
               </div>
             )}
 
-            <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
               {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
                 <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
                   <span className="text-gray-400 w-5 text-center font-bold text-sm">{idx + 1}</span>
@@ -1393,7 +1393,7 @@ export default function RockolaSaaS() {
                 </div>
               </div>
             )}
-            <div className="space-y-1 max-h-none">
+            <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
               {cola.filter(c => c.estado === 'aprobada').map((cancion, idx) => (
                 <div key={cancion.id} className="bg-gray-700 p-2 rounded-lg flex items-center gap-2">
                   <span className="text-gray-400 w-5 text-center font-bold">{idx + 1}</span>
