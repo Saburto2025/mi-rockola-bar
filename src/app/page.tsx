@@ -9,7 +9,7 @@ import {
   DollarSign, Video, BarChart3, Building, Loader2, Wifi, WifiOff, ShoppingCart,
   Plus, Minus, LogOut, Copy, Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
-import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, crearSolicitudRecarga, obtenerSolicitudesPendientes, aprobarSolicitudRecarga, rechazarSolicitudRecarga, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
+import { supabase, obtenerBar, obtenerCola, agregarCancion, actualizarEstadoCancion, eliminarCancion, obtenerTransacciones, comprarCreditosProveedor, venderCreditosCliente, actualizarPrecios, suscribirseACambios, obtenerTodosLosBares, crearBar, obtenerTodasTransacciones, obtenerInstanciaControl, crearInstanciaControl, togglePausa, actualizarVolumen, limpiarSkip, crearSolicitudRecarga, obtenerSolicitudesPendientes, aprobarSolicitudRecarga, rechazarSolicitudRecarga, acreditarCreditosPantalla, type Bar, type CancionCola, type Transaccion } from '@/lib/supabase'
 
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic'
@@ -715,12 +715,11 @@ export default function RockolaSaaS() {
     }
 
     try {
-      const { acreditarCreditosPantalla } = await import('@/lib/supabase')
       await acreditarCreditosPantalla(bar.id, cantidad)
       await cargarDatos(undefined, true)
       alert(`✅ Se transfirieron ${cantidad} créditos a la pantalla correctamente`)
     } catch (e: any) {
-      console.error('Error transferido a pantalla:', e)
+      console.error('Error transfiriendo a pantalla:', e)
       alert(`❌ Error al transferir a pantalla: ${e.message || 'Error desconocido'}`)
     }
   }
