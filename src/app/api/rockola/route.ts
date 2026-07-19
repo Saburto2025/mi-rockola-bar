@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Obtener datos actuales del bar
     const barRes = await client.execute({
-      sql: "SELECT creditos_disponibles, precio_compra, precio_venta FROM bares WHERE id = ?",
+      sql: "SELECT creditos_disponibles, creditos_pantalla, precio_compra, precio_venta FROM bares WHERE id = ?",
       args: [bar_id]
     })
 
@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
 
     const bar = barRes.rows[0]
     const saldoActual = Number(bar.creditos_disponibles || 0)
+    const creditosPantallaBar = Number(bar.creditos_pantalla || 0)
 
     if (cantidad > saldoActual) {
       return NextResponse.json({ error: 'Saldo insuficiente en bolsa SaaS' }, { status: 400 })
@@ -98,10 +99,10 @@ export async function POST(request: NextRequest) {
 
     const creditosActuales = rockolaRes.rows.length > 0 ? Number(rockolaRes.rows[0].creditos_pantalla || 0) : 0
 
-    // Actualizar saldo del bar (descontar)
+    // Actualizar saldo del bar (descontar) y creditos en pantalla (sumar)
     await client.execute({
-      sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
-      args: [saldoActual - cantidad, bar_id]
+      sql: "UPDATE bares SET creditos_disponibles = ?, creditos_pantalla = ? WHERE id = ?",
+      args: [saldoActual - cantidad, creditosPantallaBar + cantidad, bar_id]
     })
 
     // Actualizar créditos de la TV (sumar)

@@ -334,6 +334,23 @@ export async function agregarCancionYConsumir(barId: string, cancion: Omit<Canci
     args: [bar.creditos_pantalla - 1, barId],
   });
 
+  // Descontar crédito de la pantalla en instancias_rockola también
+  try {
+    const instRes = await client.execute({
+      sql: "SELECT creditos_pantalla FROM instancias_rockola WHERE bar_id = ?",
+      args: [barId],
+    });
+    if (instRes.rows.length > 0) {
+      const instCreds = Number(instRes.rows[0].creditos_pantalla || 0);
+      await client.execute({
+        sql: "UPDATE instancias_rockola SET creditos_pantalla = ? WHERE bar_id = ?",
+        args: [Math.max(0, instCreds - 1), barId],
+      });
+    }
+  } catch (err) {
+    console.error("Error updating instancias_rockola credits:", err);
+  }
+
   // Registrar transacción de consumo
   const transId = crypto.randomUUID();
   await client.execute({
@@ -451,6 +468,28 @@ export async function acreditarCreditosPantalla(barId: string, cantidad: number)
     sql: "UPDATE bares SET creditos_disponibles = ?, creditos_pantalla = ? WHERE id = ?",
     args: [nuevoStock, nuevoPantalla, barId],
   });
+
+  // Actualizar instancia rockola también
+  try {
+    const instRes = await client.execute({
+      sql: "SELECT creditos_pantalla FROM instancias_rockola WHERE bar_id = ?",
+      args: [barId],
+    });
+    if (instRes.rows.length > 0) {
+      const instCreds = Number(instRes.rows[0].creditos_pantalla || 0);
+      await client.execute({
+        sql: "UPDATE instancias_rockola SET creditos_pantalla = ? WHERE bar_id = ?",
+        args: [instCreds + cantidad, barId],
+      });
+    } else {
+      await client.execute({
+        sql: "INSERT INTO instancias_rockola (id, bar_id, creditos_pantalla, volumen, pausado, skip_requested) VALUES (?, ?, ?, 50, 0, 0)",
+        args: [crypto.randomUUID(), barId, cantidad],
+      });
+    }
+  } catch (err) {
+    console.error("Error updating instancias_rockola credits in acreditar:", err);
+  }
 
   // Registrar transacción
   const transId = crypto.randomUUID();

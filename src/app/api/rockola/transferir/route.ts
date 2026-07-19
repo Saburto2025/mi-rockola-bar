@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Obtener datos actuales del bar
     const barRes = await client.execute({
-      sql: "SELECT creditos_disponibles, precio_compra FROM bares WHERE id = ?",
+      sql: "SELECT creditos_disponibles, creditos_pantalla, precio_compra FROM bares WHERE id = ?",
       args: [bar_id]
     })
 
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
 
     const bar = barRes.rows[0]
     const creditosDisponibles = Number(bar.creditos_disponibles || 0)
+    const creditosPantallaBarActual = Number(bar.creditos_pantalla || 0)
 
     // Obtener instancia rockola
     const instanciaRes = await client.execute({
@@ -56,11 +57,12 @@ export async function POST(request: NextRequest) {
       ]
     })
 
-    // Actualizar créditos del bar (descontar)
+    // Actualizar créditos del bar (descontar de stock y sumar a pantalla)
     const nuevosCreditosDisponibles = creditosDisponibles - cantidad
+    const nuevosCreditosPantallaBar = creditosPantallaBarActual + cantidad
     await client.execute({
-      sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
-      args: [nuevosCreditosDisponibles, bar_id]
+      sql: "UPDATE bares SET creditos_disponibles = ?, creditos_pantalla = ? WHERE id = ?",
+      args: [nuevosCreditosDisponibles, nuevosCreditosPantallaBar, bar_id]
     })
 
     // Actualizar créditos de la instancia rockola (sumar)
