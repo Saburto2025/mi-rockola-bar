@@ -289,6 +289,63 @@ export default function RockolaSaaS() {
     }
   }, [modo, clienteRegistrado, nombreCliente, bar])
 
+  // ============= VALIDAR VIDEO (FILTROS) =============
+  const esVideoValido = (video: VideoBusqueda, duracionMinutos: number): boolean => {
+    // No agregar pistas mayores de 7 minutos de duración
+    if (duracionMinutos > 7) return false
+
+    const title = (video.snippet.title || '').toLowerCase()
+    const desc = (video.snippet.description || '').toLowerCase()
+    const channel = (video.snippet.channelTitle || '').toLowerCase()
+
+    // Palabras prohibidas para discos completos, mixes largos, etc.
+    const fullAlbumKeywords = [
+      'album completo', 'albumes completos', 'full album', 'full albums', 
+      'disco completo', 'discos completos', 'complete album', 'complete albums',
+      'discografia', 'discography', 'compilacion', 'compilación', 'compilation',
+      'en vivo completo', 'complete concert', 'concierto completo', 'mix completo'
+    ]
+
+    // Palabras prohibidas para noticias
+    const newsKeywords = [
+      'noticias', 'news', 'noticiero', 'reportaje', 'informativo', 'prensa', 
+      'cnn', 'bbc', 'teletica', 'repretel', 'noticias caracol', 'ntn24', 
+      'noticiario', 'telesur', 'euronews'
+    ]
+
+    // Palabras prohibidas para conferencias
+    const conferenceKeywords = [
+      'conferencia', 'conference', 'ted talk', 'tedx', 'charla', 'discurso', 
+      'keynote', 'seminar', 'seminario', 'conferencia de prensa', 'press conference',
+      'exposicion', 'exposición'
+    ]
+
+    // Palabras prohibidas para entrevistas
+    const interviewKeywords = [
+      'entrevista', 'interview', 'interviews', 'podcast', 'conversatorio', 
+      'talk show', 'entrevistado', 'entrevistando', 'hablando de'
+    ]
+
+    const containsKeyword = (text: string, keywords: string[]): boolean => {
+      return keywords.some(k => text.includes(k))
+    }
+
+    if (containsKeyword(title, fullAlbumKeywords) || containsKeyword(desc, fullAlbumKeywords)) {
+      return false
+    }
+    if (containsKeyword(title, newsKeywords) || containsKeyword(desc, newsKeywords) || containsKeyword(channel, newsKeywords)) {
+      return false
+    }
+    if (containsKeyword(title, conferenceKeywords) || containsKeyword(desc, conferenceKeywords) || containsKeyword(channel, conferenceKeywords)) {
+      return false
+    }
+    if (containsKeyword(title, interviewKeywords) || containsKeyword(desc, interviewKeywords) || containsKeyword(channel, interviewKeywords)) {
+      return false
+    }
+
+    return true
+  }
+
   // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
   const buscarVideos = async () => {
     if (!busqueda.trim()) return
@@ -301,8 +358,21 @@ export default function RockolaSaaS() {
     }
 
     try {
-      const query = encodeURIComponent(busqueda)
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
+      let q = busqueda.trim()
+      const qLower = q.toLowerCase()
+      
+      // Si no contiene términos de música/video, agregamos 'official' o 'music' para enfocar en canciones oficiales
+      const musicTerms = ['official', 'oficial', 'video', 'music', 'cancion', 'canción', 'letra', 'lyrics', 'audio']
+      const hasMusicTerm = musicTerms.some(term => qLower.includes(term))
+      if (!hasMusicTerm) {
+        q = `${q} official`
+      }
+
+      // Exclusión directa en la consulta de YouTube para mejorar precisión y evitar traer resultados indeseados
+      q = `${q} -"album completo" -"full album" -"disco completo" -noticias -entrevista -conferencia -interview -podcast -tedx -noticiero`
+
+      const query = encodeURIComponent(q)
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
 
       const res = await fetch(url)
       const data = await res.json()
@@ -330,7 +400,7 @@ export default function RockolaSaaS() {
             duracionMinutos: minutos,
             duracionFormateada: formatDuration(minutos)
           }
-        }).filter((v: any) => v.duracionMinutos <= 8)
+        }).filter((v: any) => esVideoValido(v, v.duracionMinutos))
 
         setVideosBusqueda(videosConDuracion)
       } else {
