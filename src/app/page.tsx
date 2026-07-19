@@ -706,6 +706,25 @@ export default function RockolaSaaS() {
     }
   }
 
+  const transferirCreditosAPantalla = async (cantidad: number) => {
+    if (!bar) return
+    if (cantidad <= 0) return
+    if (bar.creditos_disponibles < cantidad) {
+      alert('❌ No tienes suficientes créditos disponibles para transferir')
+      return
+    }
+
+    try {
+      const { acreditarCreditosPantalla } = await import('@/lib/supabase')
+      await acreditarCreditosPantalla(bar.id, cantidad)
+      await cargarDatos(undefined, true)
+      alert(`✅ Se transfirieron ${cantidad} créditos a la pantalla correctamente`)
+    } catch (e: any) {
+      console.error('Error transferido a pantalla:', e)
+      alert(`❌ Error al transferir a pantalla: ${e.message || 'Error desconocido'}`)
+    }
+  }
+
   const abrirModalCliente = (cantidad: number) => {
     setCreditosAVender(cantidad)
     setNombreClienteInput('')
@@ -1362,17 +1381,41 @@ export default function RockolaSaaS() {
 
         <div className="max-w-4xl mx-auto p-4 space-y-4">
           {/* Resumen de créditos */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-xl p-3 border border-green-600">
-              <p className="text-green-300 text-xs">CRÉDITOS DISPONIBLES</p>
+              <p className="text-green-300 text-xs font-bold">CRÉDITOS BOLSA (STOCK)</p>
               <p className="text-3xl font-bold text-white">{bar?.creditos_disponibles || 0}</p>
             </div>
+            <div className="bg-gradient-to-br from-purple-800 to-purple-900 rounded-xl p-3 border border-purple-600 flex flex-col justify-between">
+              <div>
+                <p className="text-purple-300 text-xs font-bold">CRÉDITOS PANTALLA (TV)</p>
+                <p className="text-3xl font-bold text-white">{bar?.creditos_pantalla || 0}</p>
+              </div>
+              {bar && bar.creditos_disponibles > 0 && (
+                <button
+                  onClick={() => {
+                    const cantStr = prompt(`¿Cuántos créditos deseas transferir a la pantalla? (Disponibles: ${bar.creditos_disponibles})`, bar.creditos_disponibles.toString())
+                    if (cantStr) {
+                      const cant = parseInt(cantStr)
+                      if (!isNaN(cant) && cant > 0) {
+                        transferirCreditosAPantalla(cant)
+                      } else {
+                        alert('❌ Cantidad inválida')
+                      }
+                    }
+                  }}
+                  className="mt-2 bg-purple-600 hover:bg-purple-500 text-white text-xs py-1 rounded font-bold transition-all duration-150"
+                >
+                  ⚡ Cargar a TV
+                </button>
+              )}
+            </div>
             <div className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl p-3 border border-blue-600">
-              <p className="text-blue-300 text-xs">PRECIO COMPRA</p>
+              <p className="text-blue-300 text-xs font-bold">PRECIO COMPRA</p>
               <p className="text-2xl font-bold text-white">₡{bar?.precio_compra || 0}</p>
             </div>
             <div className="bg-gradient-to-br from-yellow-800 to-yellow-900 rounded-xl p-3 border border-yellow-600">
-              <p className="text-yellow-300 text-xs">PRECIO VENTA</p>
+              <p className="text-yellow-300 text-xs font-bold">PRECIO VENTA</p>
               <p className="text-2xl font-bold text-white">₡{bar?.precio_venta || 0}</p>
             </div>
           </div>
