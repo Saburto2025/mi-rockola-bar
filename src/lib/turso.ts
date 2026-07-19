@@ -1,8 +1,18 @@
 import { createClient } from "@libsql/client";
 import crypto from "crypto";
 
-const databaseUrl = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "libsql://dummy-url.turso.io";
+let databaseUrl = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "libsql://dummy-url.turso.io";
 const authToken = process.env.TURSO_AUTH_TOKEN || "";
+
+// Validar que el esquema sea soportado por el cliente de libsql para evitar crasheos en SSR
+const esEsquemaValido = (url: string) => {
+  return url.startsWith("libsql:") || url.startsWith("http:") || url.startsWith("https:") || url.startsWith("file:");
+};
+
+if (!esEsquemaValido(databaseUrl)) {
+  console.warn(`⚠️ URL de base de datos no soportada por libsql: "${databaseUrl}". Usando URL temporal.`);
+  databaseUrl = "libsql://dummy-url.turso.io";
+}
 
 // Crear cliente de Turso
 export const client = createClient({
