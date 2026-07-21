@@ -157,10 +157,13 @@ export default function RockolaSaaS() {
           return prev
         }
         if (actual) {
-          if (prev && !sigueEnCola) {
+          // Si no había canción previa, siempre cargar la actual (incluso en modo TV)
+          if (!prev) return actual
+          if (!sigueEnCola) {
             return actual
           }
           if (modo === 'tv') {
+            // En TV, si la previa sigue en cola, no interrumpir
             return prev
           }
           return actual
@@ -236,10 +239,13 @@ export default function RockolaSaaS() {
             return prev
           }
           if (actual) {
-            if (prev && !sigueEnCola) {
+            // Si no había canción previa, siempre cargar la actual (incluso en modo TV)
+            if (!prev) return actual
+            if (!sigueEnCola) {
               return actual
             }
             if (modo === 'tv') {
+              // En TV, si la previa sigue en cola, no interrumpir
               return prev
             }
             return actual
@@ -1065,9 +1071,16 @@ export default function RockolaSaaS() {
               </div>
               <div className="space-y-2">
                 <h2 className="text-3xl font-extrabold text-white tracking-wide">PANTALLA DE TV</h2>
-                <p className="text-gray-400 text-sm leading-relaxed">
-                  Para permitir que la música y los videos se reproduzcan automáticamente con sonido, por favor presiona el botón de abajo.
-                </p>
+                {bar && <p className="text-purple-300 font-semibold">{bar.nombre}</p>}
+                {cancionActual ? (
+                  <p className="text-yellow-400 text-sm font-medium">🎵 Lista para reproducir: {cancionActual.titulo.substring(0, 50)}</p>
+                ) : cola.filter(c => c.estado === 'aprobada').length > 0 ? (
+                  <p className="text-green-400 text-sm font-medium">🎶 {cola.filter(c => c.estado === 'aprobada').length} canción(es) en cola lista(s)</p>
+                ) : (
+                  <p className="text-gray-400 text-sm leading-relaxed">
+                    Para permitir que la música y los videos se reproduzcan automáticamente con sonido, presiona el botón de abajo.
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => {
@@ -1086,7 +1099,7 @@ export default function RockolaSaaS() {
                 }}
                 className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:shadow-purple-500/25 active:scale-95 transition-all duration-150"
               >
-                Activar Reproducción
+                ▶ Activar Reproducción
               </button>
             </div>
           </div>
