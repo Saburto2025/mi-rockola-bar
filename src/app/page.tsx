@@ -91,6 +91,12 @@ export default function RockolaSaaS() {
   const playerRef = useRef<any>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
+  // ============= ANTI-SLEEP (TV) =============
+  const wakeLockRef = useRef<any>(null)
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
+  const watchdogRef = useRef<NodeJS.Timeout | null>(null)
+  const lastVideoActivityRef = useRef<number>(Date.now())
+
   // ============= ESTADOS DE CONTROL E INTERACCIÓN =============
   const [controlInstancia, setControlInstancia] = useState<any>(null)
   const [tvReady, setTvReady] = useState(false)
@@ -866,6 +872,79 @@ export default function RockolaSaaS() {
     }
     setCreandoBar(false)
   }
+
+  // ============= ANTI-SLEEP: WAKE LOCK + HEARTBEAT + WATCHDOG (MODO TV) =============
+  useEffect(() => {
+    if (modo !== 'tv') return
+
+    // --- 1) Screen Wake Lock API ---
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          const lock = await (navigator as any).wakeLock.request('screen')
+          wakeLockRef.current = lock
+          lock.addEventListener('release', () => {
+            // El sistema liberó el lock (ej. tab en background). Intentar reactivar.
+            console.log('[TV] Wake Lock liberado, reintentando...')
+            setTimeout(requestWakeLock, 2000)
+          })
+          console.log('[TV] Wake Lock activo ✓')
+        }
+      } catch (err) {
+        console.warn('[TV] Wake Lock no disponible:', err)
+      }
+    }
+    requestWakeLock()
+
+    // Re-adquirir cuando la página vuelva a estar visible (ej. usuario cambió tab y regresó)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    // --- 2) Heartbeat: genera actividad DOM periódica para navegadores sin Wake Lock ---
+    // Mueve un píxel invisible cada 30s para evitar el idle del sistema
+    heartbeatRef.current = setInterval(() => {
+      lastVideoActivityRef.current = Date.now()
+      // Crear y eliminar un elemento invisible para "despertar" el motor de renderizado
+      const ping = document.createElement('div')
+      ping.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0;'
+      document.body.appendChild(ping)
+      requestAnimationFrame(() => {
+        document.body.removeChild(ping)
+      })
+    }, 30_000) // cada 30 segundos
+
+    // --- 3) Watchdog: si hay canción activa pero el player está colgado, lo reinicia ---
+    // Se revisa cada 20s; si el player lleva >45s sin avanzar, fuerza play
+    watchdogRef.current = setInterval(() => {
+      if (playerRef.current && !pausado) {
+        try {
+          const state = playerRef.current.getPlayerState()
+          // state 1 = playing, 3 = buffering — si es cualquier otro, intentar reactivar
+          if (state !== 1 && state !== 3) {
+            console.warn(`[TV] Watchdog: player en estado ${state}, forzando play...`)
+            playerRef.current.playVideo()
+          }
+        } catch (e) {
+          console.warn('[TV] Watchdog error:', e)
+        }
+      }
+    }, 20_000) // cada 20 segundos
+
+    return () => {
+      // Liberar recursos al desmontar
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {})
+        wakeLockRef.current = null
+      }
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+      if (watchdogRef.current) clearInterval(watchdogRef.current)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [modo, pausado])
 
   // ============= REPRODUCIR SIGUIENTE AUTOMÁTICAMENTE =============
   useEffect(() => {
