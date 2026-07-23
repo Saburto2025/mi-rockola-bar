@@ -218,11 +218,15 @@ export default function RockolaSaaS() {
     }
   }
 
-  // ============= SUSCRIPCIÓN A CAMBIOS =============
+  // ============= CARGAR DATOS SEGÚN MODO =============
   useEffect(() => {
     if (!barId && modo !== 'superadmin') return
-    
     cargarDatos()
+  }, [modo, barId])
+
+  // ============= SUSCRIPCIÓN A CAMBIOS =============
+  useEffect(() => {
+    if (!barId) return
 
     unsubscribeRef.current = suscribirseACambios(barId, {
       onBarCambio: (nuevoBar) => {

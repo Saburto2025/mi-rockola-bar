@@ -124,6 +124,11 @@ export function suscribirseACambios(barId: string, callbacks: {
   onControlCambio?: (instancia: InstanciaRockola) => void;
   onSolicitudesCambio?: (solicitudes: any[]) => void;
 }) {
+  if (!barId) {
+    console.warn("suscribirseACambios: barId is empty, skipping polling");
+    return () => {};
+  }
+
   let active = true;
   let timerId: any = null;
 
@@ -144,8 +149,12 @@ export function suscribirseACambios(barId: string, callbacks: {
           lastBarJson = barJson;
           callbacks.onBarCambio(bar);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Error in onBarCambio polling:", e);
+        if (e.message === "Bar no encontrado") {
+          console.warn(`Bar "${barId}" no encontrado. Deteniendo sondeo.`);
+          active = false;
+        }
       }
     }
 
