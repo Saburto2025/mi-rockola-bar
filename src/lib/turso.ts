@@ -863,14 +863,8 @@ export async function aprobarSolicitudRecarga(solicitudId: string): Promise<void
     throw new Error(`Créditos insuficientes en el bar. Se requieren ${creditos} cr, disponibles ${bar.creditos_disponibles} cr.`);
   }
 
-  const nuevoStock = bar.creditos_disponibles - creditos;
-  const now = new Date().toISOString();
-
-  // Actualizar bar
-  await client.execute({
-    sql: "UPDATE bares SET creditos_disponibles = ? WHERE id = ?",
-    args: [nuevoStock, sol.bar_id],
-  });
+  // Acreditar los créditos en la pantalla y restarlos de la bolsa SaaS
+  await acreditarCreditosPantalla(sol.bar_id, creditos);
 
   // Buscar o crear cliente y sumarle el monto solicitado
   const cliente = await obtenerOcrearCliente(sol.bar_id, sol.cliente_nombre);
@@ -883,6 +877,7 @@ export async function aprobarSolicitudRecarga(solicitudId: string): Promise<void
   });
 
   // Registrar transacción
+  const now = new Date().toISOString();
   const transId = crypto.randomUUID();
   await client.execute({
     sql: `INSERT INTO transacciones (id, bar_id, tipo, cantidad, precio_unitario, total, cliente_nombre, descripcion, creado_en)
