@@ -691,21 +691,23 @@ export async function obtenerTodasTransacciones() {
 export async function obtenerOcrearCliente(barId: string, nombre: string): Promise<Cliente> {
   await initDatabase();
   
-  // Buscar cliente existente
+  const nombreNormalizado = nombre.trim();
+
+  // Buscar cliente existente de manera insensible a mayúsculas/minúsculas y espacios en los extremos
   const res = await client.execute({
-    sql: "SELECT * FROM clientes WHERE bar_id = ? AND nombre = ? AND activo = 1 LIMIT 1",
-    args: [barId, nombre],
+    sql: "SELECT * FROM clientes WHERE bar_id = ? AND LOWER(TRIM(nombre)) = LOWER(?) AND activo = 1 LIMIT 1",
+    args: [barId, nombreNormalizado],
   });
 
   if (res.rows.length > 0) {
     return mapCliente(res.rows[0]);
   }
 
-  // Crear nuevo
+  // Crear nuevo con el nombre ya recortado
   const newClientId = crypto.randomUUID();
   await client.execute({
     sql: "INSERT INTO clientes (id, bar_id, nombre, creditos, total_gastado, activo) VALUES (?, ?, ?, 0, 0, 1)",
-    args: [newClientId, barId, nombre],
+    args: [newClientId, barId, nombreNormalizado],
   });
 
   const newRes = await client.execute({

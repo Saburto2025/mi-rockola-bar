@@ -1315,13 +1315,27 @@ export default function RockolaSaaS() {
               type="text"
               value={nombreCliente}
               onChange={(e) => setNombreCliente(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && nombreCliente.trim() && setClienteRegistrado(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const trimmed = nombreCliente.trim();
+                  if (trimmed) {
+                    setNombreCliente(trimmed);
+                    setClienteRegistrado(true);
+                  }
+                }
+              }}
               placeholder="Tu nombre completo..."
               className="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl mb-4 focus:border-green-500 focus:outline-none text-gray-900 bg-white"
             />
             
             <button
-              onClick={() => nombreCliente.trim() && setClienteRegistrado(true)}
+              onClick={() => {
+                const trimmed = nombreCliente.trim();
+                if (trimmed) {
+                  setNombreCliente(trimmed);
+                  setClienteRegistrado(true);
+                }
+              }}
               disabled={!nombreCliente.trim()}
               className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors"
             >
