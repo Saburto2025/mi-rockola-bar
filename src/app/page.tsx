@@ -55,6 +55,8 @@ export default function RockolaSaaS() {
   const [busqueda, setBusqueda] = useState('')
   const [videosBusqueda, setVideosBusqueda] = useState<VideoBusqueda[]>([])
   const [buscando, setBuscando] = useState(false)
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null)
+  const [cargandoMas, setCargandoMas] = useState(false)
 
   // ============= ESTADOS DE CLIENTE =============
   const [nombreCliente, setNombreCliente] = useState('')
@@ -309,10 +311,12 @@ export default function RockolaSaaS() {
     }
   }, [modo, clienteRegistrado, nombreCliente, bar])
 
-  // ============= VALIDAR VIDEO (FILTROS) =============
+  // ============= VALIDAR VIDEO (FILTROS ESTRICTOS DE MÚSICA) =============
   const esVideoValido = (video: VideoBusqueda, duracionMinutos: number): boolean => {
     // No agregar pistas mayores de 7 minutos de duración
     if (duracionMinutos > 7) return false
+    // No agregar videos de menos de 1 minuto (probablemente no son canciones)
+    if (duracionMinutos < 1) return false
 
     const title = (video.snippet.title || '').toLowerCase()
     const desc = (video.snippet.description || '').toLowerCase()
@@ -323,27 +327,40 @@ export default function RockolaSaaS() {
       'album completo', 'albumes completos', 'full album', 'full albums', 
       'disco completo', 'discos completos', 'complete album', 'complete albums',
       'discografia', 'discography', 'compilacion', 'compilación', 'compilation',
-      'en vivo completo', 'complete concert', 'concierto completo', 'mix completo'
+      'en vivo completo', 'complete concert', 'concierto completo', 'mix completo',
+      'megamix', 'mega mix', 'non stop', 'nonstop', 'best of', 'lo mejor de',
+      'grandes exitos', 'grandes éxitos', 'greatest hits'
     ]
 
     // Palabras prohibidas para noticias
     const newsKeywords = [
-      'noticias', 'news', 'noticiero', 'reportaje', 'informativo', 'prensa', 
+      'noticias', 'noticiero', 'reportaje', 'informativo', 'prensa', 
       'cnn', 'bbc', 'teletica', 'repretel', 'noticias caracol', 'ntn24', 
-      'noticiario', 'telesur', 'euronews'
+      'noticiario', 'telesur', 'euronews', 'breaking news', 'última hora',
+      'ultima hora', 'telediario'
     ]
 
-    // Palabras prohibidas para conferencias
+    // Palabras prohibidas para conferencias, charlas y educación
     const conferenceKeywords = [
       'conferencia', 'conference', 'ted talk', 'tedx', 'charla', 'discurso', 
       'keynote', 'seminar', 'seminario', 'conferencia de prensa', 'press conference',
-      'exposicion', 'exposición'
+      'exposicion', 'exposición', 'clase', 'tutorial', 'cómo hacer', 'como hacer',
+      'how to', 'curso de', 'aprende a', 'lección', 'leccion'
     ]
 
-    // Palabras prohibidas para entrevistas
+    // Palabras prohibidas para entrevistas y programas de conversación
     const interviewKeywords = [
       'entrevista', 'interview', 'interviews', 'podcast', 'conversatorio', 
-      'talk show', 'entrevistado', 'entrevistando', 'hablando de'
+      'talk show', 'entrevistado', 'entrevistando', 'hablando de',
+      'habla sobre', 'habla con', 'hablan de', 'detrás de cámaras', 'detras de camaras',
+      'making of', 'behind the scenes', 'documental', 'documentary'
+    ]
+
+    // Palabras prohibidas para deportes y otros contenidos no musicales
+    const nonMusicKeywords = [
+      'partido', 'match', 'highlights', 'goles', 'resumen', 'pelea',
+      'gaming', 'gameplay', 'walkthrough', 'unboxing', 'reseña de', 'review de',
+      'reaction to', 'reaccion a', 'reacción a', 'watching'
     ]
 
     const containsKeyword = (text: string, keywords: string[]): boolean => {
@@ -362,14 +379,73 @@ export default function RockolaSaaS() {
     if (containsKeyword(title, interviewKeywords) || containsKeyword(desc, interviewKeywords) || containsKeyword(channel, interviewKeywords)) {
       return false
     }
+    if (containsKeyword(title, nonMusicKeywords)) {
+      return false
+    }
 
     return true
   }
 
   // ============= FUNCIÓN DE BÚSQUEDA YOUTUBE =============
+  const construirQueryMusica = (termino: string): string => {
+    let q = termino.trim()
+    const qLower = q.toLowerCase()
+    
+    // Si no contiene términos de música, agrega 'official music video' para enfocar en canciones
+    const musicTerms = ['official', 'oficial', 'video', 'music', 'cancion', 'canción', 'letra', 'lyrics', 'audio', 'mv']
+    const hasMusicTerm = musicTerms.some(term => qLower.includes(term))
+    if (!hasMusicTerm) {
+      q = `${q} official music video`
+    }
+
+    // Exclusión directa en la consulta de YouTube
+    q = `${q} -"album completo" -"full album" -"disco completo" -noticias -entrevista -conferencia -interview -podcast -tedx -noticiero -tutorial -"how to"`
+    return q
+  }
+
+  const fetchVideosYoutube = async (pageToken?: string): Promise<{items: VideoBusqueda[], nextPageToken: string | null}> => {
+    const q = construirQueryMusica(busqueda)
+    const query = encodeURIComponent(q)
+    // videoCategoryId=10 = Music en YouTube
+    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${query}&type=video&videoCategoryId=10&key=${YOUTUBE_API_KEY}`
+    if (pageToken) {
+      url += `&pageToken=${pageToken}`
+    }
+
+    const res = await fetch(url)
+    const data = await res.json()
+
+    if (data.error) {
+      throw new Error(`Error de YouTube: ${data.error.message || 'Error desconocido'} (Código: ${data.error.code})`)
+    }
+
+    if (!data.items || data.items.length === 0) {
+      return { items: [], nextPageToken: null }
+    }
+
+    const videoIds = data.items.map((v: VideoBusqueda) => v.id.videoId).join(',')
+    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`
+    const detailsRes = await fetch(detailsUrl)
+    const detailsData = await detailsRes.json()
+
+    const videosConDuracion = data.items.map((v: VideoBusqueda) => {
+      const detail = detailsData.items?.find((d: any) => d.id === v.id.videoId)
+      const duration = detail?.contentDetails?.duration || ''
+      const minutos = parseDuration(duration)
+      return { 
+        ...v, 
+        duracionMinutos: minutos,
+        duracionFormateada: formatDuration(minutos)
+      }
+    }).filter((v: any) => esVideoValido(v, v.duracionMinutos))
+
+    return { items: videosConDuracion, nextPageToken: data.nextPageToken || null }
+  }
+
   const buscarVideos = async () => {
     if (!busqueda.trim()) return
     setBuscando(true)
+    setNextPageToken(null)
 
     if (!YOUTUBE_API_KEY) {
       alert("❌ Error: La clave de API de YouTube (NEXT_PUBLIC_YOUTUBE_API_KEY) no está configurada.");
@@ -378,59 +454,28 @@ export default function RockolaSaaS() {
     }
 
     try {
-      let q = busqueda.trim()
-      const qLower = q.toLowerCase()
-      
-      // Si no contiene términos de música/video, agregamos 'official' o 'music' para enfocar en canciones oficiales
-      const musicTerms = ['official', 'oficial', 'video', 'music', 'cancion', 'canción', 'letra', 'lyrics', 'audio']
-      const hasMusicTerm = musicTerms.some(term => qLower.includes(term))
-      if (!hasMusicTerm) {
-        q = `${q} official`
-      }
-
-      // Exclusión directa en la consulta de YouTube para mejorar precisión y evitar traer resultados indeseados
-      q = `${q} -"album completo" -"full album" -"disco completo" -noticias -entrevista -conferencia -interview -podcast -tedx -noticiero`
-
-      const query = encodeURIComponent(q)
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${query}&type=video&key=${YOUTUBE_API_KEY}`
-
-      const res = await fetch(url)
-      const data = await res.json()
-
-      if (data.error) {
-        console.error('Error de API de YouTube:', data.error)
-        alert(`❌ Error de YouTube: ${data.error.message || 'Error desconocido'} (Código: ${data.error.code})`)
-        setVideosBusqueda([])
-        setBuscando(false)
-        return
-      }
-
-      if (data.items && data.items.length > 0) {
-        const videoIds = data.items.map((v: VideoBusqueda) => v.id.videoId).join(',')
-        const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`
-        const detailsRes = await fetch(detailsUrl)
-        const detailsData = await detailsRes.json()
-
-        const videosConDuracion = data.items.map((v: VideoBusqueda) => {
-          const detail = detailsData.items?.find((d: any) => d.id === v.id.videoId)
-          const duration = detail?.contentDetails?.duration || ''
-          const minutos = parseDuration(duration)
-          return { 
-            ...v, 
-            duracionMinutos: minutos,
-            duracionFormateada: formatDuration(minutos)
-          }
-        }).filter((v: any) => esVideoValido(v, v.duracionMinutos))
-
-        setVideosBusqueda(videosConDuracion)
-      } else {
-        setVideosBusqueda([])
-      }
-    } catch (error) {
+      const { items, nextPageToken: token } = await fetchVideosYoutube()
+      setVideosBusqueda(items)
+      setNextPageToken(token)
+    } catch (error: any) {
       console.error('Error buscando:', error)
+      alert(`❌ ${error.message || 'Error al buscar videos'}`)
       setVideosBusqueda([])
     }
     setBuscando(false)
+  }
+
+  const cargarMasVideos = async () => {
+    if (!nextPageToken || cargandoMas) return
+    setCargandoMas(true)
+    try {
+      const { items, nextPageToken: token } = await fetchVideosYoutube(nextPageToken)
+      setVideosBusqueda(prev => [...prev, ...items])
+      setNextPageToken(token)
+    } catch (error: any) {
+      console.error('Error cargando más:', error)
+    }
+    setCargandoMas(false)
   }
 
   const parseDuration = (duration: string): number => {
@@ -601,12 +646,24 @@ export default function RockolaSaaS() {
     }
   }, [cancionActual, reproducirSiguiente])
 
+  const videoErrorCountRef = useRef<number>(0)
   const onVideoError = useCallback(async (event: any) => {
-    console.error('YouTube Player Error:', event.data)
+    const errorCode = event.data
+    console.error('YouTube Player Error:', errorCode)
+    // Código 150 / 101: Video restringido por el propietario o no disponible en esta región
+    // Código 5: Error del reproductor HTML5
+    // Código 2: ID de video inválido
+    // En todos los casos, saltar a la siguiente canción
     if (cancionActual) {
+      videoErrorCountRef.current += 1
       const idToClean = cancionActual.id
-      setCancionActual(null) // Actualizar interfaz de inmediato
-      setTimeout(() => reproducirSiguiente(idToClean), 500)
+      console.warn(`Video ${cancionActual.video_id} falló con error ${errorCode}. Saltando...`)
+      setCancionActual(null)
+      // Esperar un momento antes de intentar la siguiente para evitar bucles rápidos
+      setTimeout(() => {
+        videoErrorCountRef.current = 0
+        reproducirSiguiente(idToClean)
+      }, 1000)
     }
   }, [cancionActual, reproducirSiguiente])
 
@@ -1260,32 +1317,50 @@ export default function RockolaSaaS() {
             {/* RESULTADOS EN MODO LISTA - CON BOTÓN AGREGAR */}
             {videosBusqueda.length > 0 && (
               <div className="border-t border-gray-700 pt-3">
-                <p className="text-gray-400 text-sm mb-2">Resultados ({videosBusqueda.length}) - Click para agregar:</p>
-                <div className="space-y-1 max-h-96 overflow-y-auto">
+                <p className="text-gray-400 text-sm mb-2">🎵 Resultados ({videosBusqueda.length}) - Toca para agregar:</p>
+                <div className="space-y-2 max-h-[28rem] overflow-y-auto">
                   {videosBusqueda.map((video, index) => (
                     <div
                       key={video.id.videoId}
-                      onClick={() => agregarACola(video)}
-                      className="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg cursor-pointer transition-colors flex items-center gap-3"
+                      className="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg cursor-pointer transition-colors flex items-center gap-2"
                     >
-                      <span className="text-gray-500 font-bold w-6 text-center text-sm">{index + 1}</span>
-                      <img src={video.snippet.thumbnails.default.url} alt="" className="w-12 h-9 rounded object-cover flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{video.snippet.title}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          <span>{video.snippet.channelTitle}</span>
-                          <span>•</span>
-                          <span className="text-blue-400">{video.duracionFormateada}</span>
-                          <span>•</span>
-                          <span className="text-yellow-400">₡{bar?.precio_venta || 100}</span>
+                      <span className="text-gray-500 font-bold w-5 text-center text-xs flex-shrink-0">{index + 1}</span>
+                      <img src={video.snippet.thumbnails.default.url} alt="" className="w-14 h-10 rounded object-cover flex-shrink-0" />
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        {/* Título en 2 líneas para que siempre sea visible en móvil */}
+                        <p className="text-sm font-semibold leading-tight line-clamp-2 text-white">{video.snippet.title}</p>
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          <span className="text-xs text-gray-400 truncate max-w-[100px]">{video.snippet.channelTitle}</span>
+                          <span className="text-gray-600 text-xs">•</span>
+                          <span className="text-blue-400 text-xs font-medium">{video.duracionFormateada}</span>
+                          <span className="text-gray-600 text-xs">•</span>
+                          <span className="text-yellow-400 text-xs font-bold">₡{bar?.precio_venta || 100}</span>
                         </div>
                       </div>
-                      <span className="bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded-lg font-bold text-sm">
-                        Agregar
-                      </span>
+                      <button
+                        onClick={() => agregarACola(video)}
+                        className="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white px-2 py-2 rounded-lg font-bold text-xs flex-shrink-0 flex flex-col items-center gap-0.5 min-w-[52px]"
+                      >
+                        <span>+</span>
+                        <span>Agregar</span>
+                      </button>
                     </div>
                   ))}
                 </div>
+                {/* Botón Seguir Buscando */}
+                {nextPageToken && (
+                  <button
+                    onClick={cargarMasVideos}
+                    disabled={cargandoMas}
+                    className="w-full mt-3 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    {cargandoMas ? (
+                      <><span className="animate-spin">⏳</span> Cargando más.....</>
+                    ) : (
+                      <>🔍 Seguir buscando más canciones</>
+                    )}
+                  </button>
+                )}
               </div>
             )}
           </div>
